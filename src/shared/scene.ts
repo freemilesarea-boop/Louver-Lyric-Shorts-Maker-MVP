@@ -2,11 +2,13 @@ import type {
   FrameStyle,
   LanguageCode,
   LyricLine,
+  MotionPreset,
   PlayIconStyle,
   ShadowStyle,
   Template,
 } from './types';
 import { LANGUAGE_FONT_STACK } from './lang';
+import { drawImageWithMotion, isStaticMotion, motionAt } from './motion';
 
 /** Canonical export resolution. All layout math is computed against this size
  * and scaled for the live preview by passing width/height to the same code. */
@@ -181,6 +183,8 @@ export interface RenderSceneOpts {
   photo?: HTMLImageElement | null;
   /** Used in preview for animated chrome (progress, waveform). 0..1. */
   timeRatio?: number;
+  /** Active photo motion preset (preview only). Defaults to template default. */
+  motionPreset?: MotionPreset;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
@@ -270,8 +274,23 @@ function paintForegroundCard(
   box: PhotoBox,
 ): void {
   if (!o.photo) return;
-  const fit = fitContain(o.photo.width, o.photo.height, box.width, box.height);
-  ctx.drawImage(o.photo, box.x + fit.x, box.y + fit.y, fit.w, fit.h);
+  const preset = o.motionPreset ?? o.template.motionPreset ?? 'none';
+
+  if (isStaticMotion(preset)) {
+    // Static-only path keeps the legacy fit-contain framing so a photo with
+    // an unusual aspect ratio is shown in full (with implicit letterboxing
+    // against the card background). This matches the pre-motion behavior.
+    const fit = fitContain(o.photo.width, o.photo.height, box.width, box.height);
+    ctx.drawImage(o.photo, box.x + fit.x, box.y + fit.y, fit.w, fit.h);
+    return;
+  }
+
+  // Motion path: cover-crop the photo to the card aspect ratio so the
+  // zoom/pan window always has full-frame content (no letterboxing) and
+  // matches what ffmpeg's zoompan output looks like.
+  const ratio = o.timeRatio ?? 0;
+  const motion = motionAt(preset, ratio);
+  drawImageWithMotion(ctx, o.photo, box.x, box.y, box.width, box.height, motion);
 }
 
 function paintChrome(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {

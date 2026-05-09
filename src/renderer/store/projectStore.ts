@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { LanguageCode, LyricLine, RenderProgress, Template } from '../../shared/types';
+import type {
+  LanguageCode,
+  LyricLine,
+  MotionPreset,
+  RenderProgress,
+  Template,
+} from '../../shared/types';
 import { templates } from '../templates/templates';
 import { detectLanguage } from '../../shared/lang';
 
@@ -30,6 +36,9 @@ interface ProjectState {
   /** Null = follow detection. Non-null = user picked manually. */
   manualLanguage: LanguageCode | null;
 
+  /** Null = follow the selected template's default. Non-null = user override. */
+  manualMotionPreset: MotionPreset | null;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -52,6 +61,7 @@ interface ProjectState {
   setTrackTitle: (s: string) => void;
   setArtistName: (s: string) => void;
   setManualLanguage: (lang: LanguageCode | null) => void;
+  setManualMotionPreset: (preset: MotionPreset | null) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -126,6 +136,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   detectedLanguage: 'unknown',
   manualLanguage: null,
 
+  manualMotionPreset: null,
+
   selectedTemplateId: templates[0].id,
 
   outputDir: null,
@@ -178,6 +190,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setTrackTitle: (trackTitle) => set({ trackTitle }),
   setArtistName: (artistName) => set({ artistName }),
   setManualLanguage: (manualLanguage) => set({ manualLanguage }),
+  setManualMotionPreset: (manualMotionPreset) => set({ manualMotionPreset }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 
@@ -193,4 +206,10 @@ export function selectedTemplate(state: ProjectState): Template {
 
 export function effectiveLanguage(state: ProjectState): LanguageCode {
   return state.manualLanguage ?? state.detectedLanguage;
+}
+
+export function effectiveMotion(state: ProjectState): MotionPreset {
+  if (state.manualMotionPreset) return state.manualMotionPreset;
+  const tpl = templates.find((t) => t.id === state.selectedTemplateId) ?? templates[0];
+  return tpl.motionPreset ?? 'none';
 }

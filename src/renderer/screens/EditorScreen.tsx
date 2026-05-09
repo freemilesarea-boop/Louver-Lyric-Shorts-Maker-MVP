@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { useProjectStore, selectedTemplate, effectiveLanguage } from '../store/projectStore';
+import {
+  useProjectStore,
+  selectedTemplate,
+  effectiveLanguage,
+  effectiveMotion,
+} from '../store/projectStore';
 import { api } from '../lib/api';
 import { buildOverlays } from '../lib/overlays';
 import LivePreview from '../components/LivePreview';
 import LyricsEditor from '../components/LyricsEditor';
 import LyricTimeline from '../components/LyricTimeline';
 import LanguageSelector from '../components/LanguageSelector';
+import MotionSelector from '../components/MotionSelector';
 import AudioRangeSelector from '../components/AudioRangeSelector';
 import TemplateGallery from '../components/TemplateGallery';
 
@@ -13,6 +19,7 @@ export default function EditorScreen(): JSX.Element {
   const state = useProjectStore();
   const template = selectedTemplate(state);
   const language = effectiveLanguage(state);
+  const motion = effectiveMotion(state);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -97,6 +104,7 @@ export default function EditorScreen(): JSX.Element {
         highlightKorean: state.highlightKorean,
         outputPath: outputDir,
         overlays,
+        motionPreset: motion,
       });
 
       if (!result.ok) {
@@ -126,6 +134,7 @@ export default function EditorScreen(): JSX.Element {
             trackTitle={state.trackTitle}
             artistName={state.artistName}
             durationSec={state.durationSec}
+            motionPreset={motion}
           />
         </div>
         <div className="mt-2 text-[10px] text-white/40">
@@ -141,6 +150,10 @@ export default function EditorScreen(): JSX.Element {
 
         <Section title="언어">
           <LanguageSelector />
+        </Section>
+
+        <Section title="포토 모션">
+          <MotionSelector />
         </Section>
 
         <Section title="오디오 구간">

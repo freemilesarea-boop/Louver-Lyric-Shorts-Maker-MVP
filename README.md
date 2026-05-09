@@ -108,6 +108,7 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 4.5 | 언어 자동 감지 (KO/EN/JA/ZH/ES)       | ✅ (1.5)   |
 | 4.5 | 줄별 타임싱크 편집 + 오디오 연동      | ✅ (1.5)   |
 | 4.5 | 프리뷰/출력 동일 scene renderer       | ✅ (1.5)   |
+| 4.6 | 사진 모션 (Ken Burns / pan / float)   | ✅ (2-1)   |
 | 5   | Whisper 자동 가사 추출                | ⬜ 다음 단계 |
 | 6   | 단어별 하이라이트 / BPM 반응형        | ⬜ 다음 단계 |
 
@@ -127,6 +128,11 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 - **줄별 타임라인 편집**: `LyricTimeline` 컴포넌트가 라인마다 start/end 입력,
   현재 재생 위치 캡처(⏱), 이 줄부터 재생(▶), "균등 분배" 버튼 제공.
   duration 변경 시 자동 재분배.
+- **포토 모션 (2-1)**: `src/shared/motion.ts` 의 단일 motion 모델이 canvas
+  preview 와 ffmpeg `zoompan` 을 동시에 구동. 6개 preset (`none` /
+  `slow_zoom_in` / `slow_zoom_out` / `pan_left` / `pan_right` /
+  `float_soft`). 템플릿마다 기본값 지정, 사용자가 select 로 오버라이드 가능.
+  Frame 데코레이션은 화면 고정, 사진은 그 안에서 움직이는 Ken Burns 방식.
 - **안정성**:
   - 입력 파일 검증 (존재/사이즈/타입) + 친절한 에러 메시지
   - 출력 폴더 쓰기 권한 사전 체크

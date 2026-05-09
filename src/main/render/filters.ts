@@ -1,4 +1,5 @@
-import type { Template } from '../../shared/types';
+import type { MotionPreset, Template } from '../../shared/types';
+import { ffmpegMotionExpressions, isStaticMotion } from '../../shared/motion';
 
 export interface OverlayTiming {
   /** Index into ffmpeg input list (0 = image, 1 = audio, 2..N = overlays). */
@@ -14,6 +15,8 @@ export interface FilterArgs {
   durationSec: number;
   template: Template;
   overlays: OverlayTiming[];
+  /** Effective motion preset for this render. */
+  motionPreset: MotionPreset;
 }
 
 /**
@@ -49,9 +52,30 @@ export function buildFilterGraph(a: FilterArgs): string {
   );
   const cardW = Math.round(W * 0.86);
   const cardH = Math.round(H * 0.62);
-  lines.push(
-    `[src2]scale=${cardW}:${cardH}:force_original_aspect_ratio=decrease[fg]`,
-  );
+
+  // Foreground card: when motion is static, keep the legacy fit-contain
+  // behavior so the user's photo is shown in full (with letterboxing if its
+  // aspect ratio doesn't match the card). For any non-static preset, switch
+  // to cover-crop and pipe through `zoompan` so the visible window animates.
+  if (isStaticMotion(a.motionPreset)) {
+    lines.push(
+      `[src2]scale=${cardW}:${cardH}:force_original_aspect_ratio=decrease[fg]`,
+    );
+  } else {
+    const m = ffmpegMotionExpressions(a.motionPreset, a.durationSec, a.fps);
+    // zoompan's `d=` is frames-per-input-frame. We feed a continuous loop of
+    // identical frames and want a 1:1 mapping (one output per input), with
+    // the duration normalizer baked into the z/x/y expressions via `on`.
+    // Setting d=1 avoids the input×d frame multiplication bug.
+    lines.push(
+      `[src2]scale=${cardW}:${cardH}:force_original_aspect_ratio=increase,` +
+        `crop=${cardW}:${cardH},` +
+        `zoompan=z='${m.zExpr}':x='${m.xExpr}':y='${m.yExpr}':` +
+        `d=1:s=${cardW}x${cardH}:fps=${a.fps}[fg]`,
+    );
+    void m.durationFrames;
+  }
+
   lines.push(`[bg][fg]overlay=(W-w)/2:(H-h)/2-80[stage0]`);
 
   // --- 3) Tint overlay ---

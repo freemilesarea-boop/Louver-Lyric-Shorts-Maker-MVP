@@ -19,6 +19,15 @@ export type FrameStyle =
 export type ShadowStyle = 'none' | 'soft' | 'hard' | 'glow' | 'outline';
 export type PlayIconStyle = 'triangle' | 'rounded' | 'minimal' | 'none';
 
+/** Photo motion presets applied to the centered foreground card. */
+export type MotionPreset =
+  | 'none'
+  | 'slow_zoom_in'
+  | 'slow_zoom_out'
+  | 'pan_left'
+  | 'pan_right'
+  | 'float_soft';
+
 export interface FontStack {
   /** CSS font-family list. */
   base: string;
@@ -59,6 +68,8 @@ export interface Template {
   playIconStyle?: PlayIconStyle;
   /** Optional decorative accents drawn on the overlay (template-specific). */
   decoration?: 'none' | 'scanlines' | 'grain' | 'sparkles' | 'reels';
+  /** Default photo motion. User can override per-project. */
+  motionPreset?: MotionPreset;
 }
 
 export interface LyricLine {
@@ -96,6 +107,8 @@ export interface RenderRequest {
    * frame in order via the overlay filter, gated by [start,end] seconds.
    */
   overlays?: OverlayPng[];
+  /** Effective motion preset for this render. Falls back to template default. */
+  motionPreset?: MotionPreset;
 }
 
 export interface RenderProgress {

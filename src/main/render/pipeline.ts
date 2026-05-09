@@ -65,6 +65,7 @@ export async function runRender(
       startSec: clamp(ov.startSec, 0, req.durationSec),
       endSec: clamp(ov.endSec, 0, req.durationSec),
     }));
+    const motionPreset = req.motionPreset ?? req.template.motionPreset ?? 'none';
     const filter = buildFilterGraph({
       width: TARGET_W,
       height: TARGET_H,
@@ -72,6 +73,7 @@ export async function runRender(
       durationSec: req.durationSec,
       template: req.template,
       overlays: overlayTimings,
+      motionPreset,
     });
     const filterScriptPath = join(tempDir, 'filter.txt');
     await fs.writeFile(filterScriptPath, filter, 'utf8');

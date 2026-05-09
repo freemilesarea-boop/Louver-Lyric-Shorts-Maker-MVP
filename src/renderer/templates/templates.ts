@@ -42,6 +42,7 @@ const minimalWhite: Template = {
   shadowStyle: 'soft',
   playIconStyle: 'minimal',
   decoration: 'none',
+  motionPreset: 'slow_zoom_in',
 };
 
 const darkMusicPlayer: Template = {
@@ -71,6 +72,7 @@ const darkMusicPlayer: Template = {
   shadowStyle: 'soft',
   playIconStyle: 'rounded',
   decoration: 'none',
+  motionPreset: 'float_soft',
 };
 
 const spotifyInspired: Template = {
@@ -100,6 +102,7 @@ const spotifyInspired: Template = {
   shadowStyle: 'soft',
   playIconStyle: 'rounded',
   decoration: 'none',
+  motionPreset: 'slow_zoom_in',
 };
 
 const appleMusicInspired: Template = {
@@ -129,6 +132,7 @@ const appleMusicInspired: Template = {
   shadowStyle: 'hard',
   playIconStyle: 'minimal',
   decoration: 'none',
+  motionPreset: 'pan_left',
 };
 
 const youtubeMusicInspired: Template = {
@@ -158,6 +162,7 @@ const youtubeMusicInspired: Template = {
   shadowStyle: 'soft',
   playIconStyle: 'rounded',
   decoration: 'none',
+  motionPreset: 'float_soft',
 };
 
 const polaroidMood: Template = {
@@ -188,6 +193,7 @@ const polaroidMood: Template = {
   shadowStyle: 'soft',
   playIconStyle: 'none',
   decoration: 'grain',
+  motionPreset: 'slow_zoom_out',
 };
 
 const cassetteTape: Template = {
@@ -217,6 +223,7 @@ const cassetteTape: Template = {
   shadowStyle: 'hard',
   playIconStyle: 'triangle',
   decoration: 'reels',
+  motionPreset: 'pan_right',
 };
 
 const vhsNight: Template = {
@@ -247,6 +254,7 @@ const vhsNight: Template = {
   glowColor: '#FF66FF',
   playIconStyle: 'minimal',
   decoration: 'scanlines',
+  motionPreset: 'pan_right',
 };
 
 const softKpopLyric: Template = {
@@ -276,6 +284,7 @@ const softKpopLyric: Template = {
   shadowStyle: 'soft',
   playIconStyle: 'none',
   decoration: 'sparkles',
+  motionPreset: 'float_soft',
 };
 
 const neonDrive: Template = {
@@ -306,6 +315,7 @@ const neonDrive: Template = {
   shadowStyle: 'glow',
   playIconStyle: 'rounded',
   decoration: 'none',
+  motionPreset: 'slow_zoom_in',
 };
 
 export const templates: Template[] = [
