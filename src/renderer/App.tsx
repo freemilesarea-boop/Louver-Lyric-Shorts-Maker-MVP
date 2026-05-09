@@ -1,0 +1,76 @@
+import { useEffect } from 'react';
+import { useProjectStore } from './store/projectStore';
+import { api } from './lib/api';
+import StartScreen from './screens/StartScreen';
+import EditorScreen from './screens/EditorScreen';
+import ExportScreen from './screens/ExportScreen';
+
+export default function App(): JSX.Element {
+  const screen = useProjectStore((s) => s.screen);
+  const setRenderProgress = useProjectStore((s) => s.setRenderProgress);
+  const setLastOutputPath = useProjectStore((s) => s.setLastOutputPath);
+  const setIsRendering = useProjectStore((s) => s.setIsRendering);
+
+  useEffect(() => {
+    const off = api().onRenderProgress((p) => {
+      setRenderProgress(p);
+      if (p.stage === 'done') {
+        setIsRendering(false);
+        if (p.outputPath) setLastOutputPath(p.outputPath);
+      } else if (p.stage === 'error') {
+        setIsRendering(false);
+      }
+    });
+    return off;
+  }, [setRenderProgress, setLastOutputPath, setIsRendering]);
+
+  return (
+    <div className="flex h-screen flex-col bg-ink-950 text-white">
+      <Topbar />
+      <main className="flex-1 overflow-hidden">
+        {screen === 'start' && <StartScreen />}
+        {screen === 'editor' && <EditorScreen />}
+        {screen === 'export' && <ExportScreen />}
+      </main>
+    </div>
+  );
+}
+
+function Topbar(): JSX.Element {
+  const screen = useProjectStore((s) => s.screen);
+  const setScreen = useProjectStore((s) => s.setScreen);
+  const stage = (label: string, key: 'start' | 'editor' | 'export', enabled: boolean) => (
+    <button
+      key={key}
+      disabled={!enabled}
+      onClick={() => enabled && setScreen(key)}
+      className={[
+        'rounded-full px-3 py-1 text-xs no-select transition-colors',
+        screen === key
+          ? 'bg-white text-ink-950'
+          : enabled
+            ? 'bg-white/10 hover:bg-white/20'
+            : 'bg-white/5 text-white/30 cursor-not-allowed',
+      ].join(' ')}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <header className="flex items-center justify-between border-b border-white/5 px-5 py-3 no-select">
+      <div className="flex items-center gap-3">
+        <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-accent to-accent-soft" />
+        <div>
+          <div className="text-sm font-semibold tracking-tight">Lyric Shorts Maker</div>
+          <div className="text-[11px] text-white/40">MVP · 9:16 · 1080×1920</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {stage('1. Start', 'start', true)}
+        {stage('2. Editor', 'editor', true)}
+        {stage('3. Export', 'export', true)}
+      </div>
+    </header>
+  );
+}
