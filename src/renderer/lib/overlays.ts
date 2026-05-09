@@ -1,8 +1,10 @@
 import type {
+  AmplitudeCurve,
   AnimationPreset,
   LanguageCode,
   LyricLine,
   OverlayPng,
+  ReactiveMode,
   Template,
 } from '../../shared/types';
 import { renderScene, SCENE_W, SCENE_H } from '../../shared/scene';
@@ -12,12 +14,15 @@ import {
   isStaticAnimation,
   planKeyframes,
 } from '../../shared/animation';
+import { reactiveStateAt } from '../../shared/audioReactive';
 
 interface BuildOpts {
   lyrics: LyricLine[];
   template: Template;
   language: LanguageCode;
   animationPreset: AnimationPreset;
+  reactiveMode: ReactiveMode;
+  amplitudeCurve: AmplitudeCurve | null;
   highlightSub: boolean;
   durationSec: number;
   trackTitle?: string;
@@ -71,12 +76,19 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       // visible impact. Always emit at least one keyframe per slot otherwise.
       if (animState.opacity <= 0.02) continue;
 
+      // Sample reactive state at this keyframe's clip-relative time. The
+      // result is baked into the PNG, so reactive effects show up exactly
+      // where the lyric/meta is visible (no extra ffmpeg machinery).
+      const tClip = chunk.start + slot.sampleSec;
+      const reactive = reactiveStateAt(opts.reactiveMode, opts.amplitudeCurve, tClip);
+
       const png = await renderOverlayPng({
         template: opts.template,
         language: opts.language,
         highlightSub: opts.highlightSub,
         lyric: chunk.line,
         animation: animState,
+        reactive,
       });
       out.push({
         base64: png,
@@ -112,6 +124,7 @@ interface OverlayPngOpts {
   trackTitle?: string;
   artistName?: string;
   animation?: import('../../shared/animation').AnimationState;
+  reactive?: import('../../shared/audioReactive').ReactiveState;
 }
 
 async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
@@ -132,6 +145,7 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     trackTitle: o.trackTitle,
     artistName: o.artistName,
     animation: o.animation,
+    reactive: o.reactive,
   });
 
   return await canvasToBase64Png(canvas);

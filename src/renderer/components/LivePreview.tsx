@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  AmplitudeCurve,
   AnimationPreset,
   LanguageCode,
   LyricLine,
   MotionPreset,
+  ReactiveMode,
   Template,
 } from '../../shared/types';
 import { renderScene, SCENE_W, SCENE_H } from '../../shared/scene';
@@ -13,6 +15,7 @@ import {
   animationStateAt,
   isStaticAnimation,
 } from '../../shared/animation';
+import { isStaticReactive, reactiveStateAt } from '../../shared/audioReactive';
 import { sliceLyrics } from '../lib/overlays';
 
 interface Props {
@@ -26,6 +29,8 @@ interface Props {
   durationSec: number;
   motionPreset: MotionPreset;
   animationPreset: AnimationPreset;
+  reactiveMode: ReactiveMode;
+  amplitudeCurve: AmplitudeCurve | null;
   forcedChunkIndex?: number | null;
 }
 
@@ -69,6 +74,7 @@ export default function LivePreview(props: Props): JSX.Element {
     const animationsActive =
       !isStaticAnimation(props.animationPreset) ||
       !isStaticMotion(props.motionPreset) ||
+      !isStaticReactive(props.reactiveMode) ||
       props.template.showWaveform ||
       props.template.progressBarStyle !== 'none' ||
       chunks.length > 1;
@@ -94,6 +100,7 @@ export default function LivePreview(props: Props): JSX.Element {
     props.durationSec,
     props.motionPreset,
     props.animationPreset,
+    props.reactiveMode,
     props.template.showWaveform,
     props.template.progressBarStyle,
     chunks.length,
@@ -123,6 +130,14 @@ export default function LivePreview(props: Props): JSX.Element {
     return animationStateAt(props.animationPreset, dur, tInChunk);
   }, [activeIdx, chunks, tNowSec, props.animationPreset]);
 
+  // Sample reactive state from the pre-computed amplitude curve at the same
+  // tNowSec — same value the export pipeline will see at the equivalent
+  // keyframe sample time.
+  const reactiveState = useMemo(
+    () => reactiveStateAt(props.reactiveMode, props.amplitudeCurve, tNowSec),
+    [props.reactiveMode, props.amplitudeCurve, tNowSec],
+  );
+
   const timeRatio = props.durationSec > 0 ? tNowSec / props.durationSec : 0;
 
   // Repaint on every state change.
@@ -148,6 +163,7 @@ export default function LivePreview(props: Props): JSX.Element {
       timeRatio,
       motionPreset: props.motionPreset,
       animation: animState,
+      reactive: reactiveState,
     });
   }, [
     photo,
@@ -160,6 +176,7 @@ export default function LivePreview(props: Props): JSX.Element {
     props.motionPreset,
     timeRatio,
     animState,
+    reactiveState,
   ]);
 
   return (

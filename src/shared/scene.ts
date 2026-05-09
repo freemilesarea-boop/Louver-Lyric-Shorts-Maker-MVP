@@ -10,6 +10,7 @@ import type {
 import { LANGUAGE_FONT_STACK } from './lang';
 import { drawImageWithMotion, isStaticMotion, motionAt } from './motion';
 import { REST_STATE, type AnimationState } from './animation';
+import { REST_REACTIVE, type ReactiveState } from './audioReactive';
 
 /** Canonical export resolution. All layout math is computed against this size
  * and scaled for the live preview by passing width/height to the same code. */
@@ -188,6 +189,8 @@ export interface RenderSceneOpts {
   motionPreset?: MotionPreset;
   /** Animation state to apply when painting the lyric line (and meta). */
   animation?: AnimationState;
+  /** Audio-reactive state — drives subtle vignette / glow / bloom layers. */
+  reactive?: ReactiveState;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
@@ -228,6 +231,10 @@ export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): 
     // Export adds only static decorations; ffmpeg drawbox handles animated chrome.
     paintDecorations(ctx, o);
   }
+
+  // 7) Audio-reactive layers — render in BOTH modes so export PNG keyframes
+  //    carry the bloom/vignette/glow that the preview shows.
+  paintReactiveOverlay(ctx, o);
 
   ctx.restore();
 }
@@ -473,15 +480,16 @@ function paintFrame(
     }
     case 'neon-border': {
       const glow = frame.glowColor ?? '#FF00C8';
+      const reactiveGlow = o.reactive?.glow ?? 0;
       ctx.save();
       ctx.shadowColor = glow;
-      ctx.shadowBlur = 36;
+      ctx.shadowBlur = 36 + reactiveGlow * 40;
       ctx.strokeStyle = glow;
-      ctx.lineWidth = 6;
+      ctx.lineWidth = 6 + reactiveGlow * 4;
       ctx.strokeRect(box.x - 6, box.y - 6, box.width + 12, box.height + 12);
-      ctx.shadowBlur = 60;
-      ctx.strokeStyle = withAlpha(glow, 0.6);
-      ctx.lineWidth = 2;
+      ctx.shadowBlur = 60 + reactiveGlow * 50;
+      ctx.strokeStyle = withAlpha(glow, 0.6 + reactiveGlow * 0.3);
+      ctx.lineWidth = 2 + reactiveGlow * 2;
       ctx.strokeRect(box.x - 14, box.y - 14, box.width + 28, box.height + 28);
       ctx.restore();
       break;
@@ -501,17 +509,21 @@ function paintLyric(
   const baseShadow = resolveShadow(t);
   const pos = resolveLyricPositioning(t);
   const anim = o.animation ?? REST_STATE;
+  const reactive = o.reactive ?? REST_REACTIVE;
 
   // Skip painting once the line is fully invisible.
   if (anim.opacity <= 0.001) return;
 
+  // Combine animation-driven glow with audio-reactive glow (additive, capped).
+  const totalGlow = clamp01(anim.glow + reactive.glow);
+
   // Glow strengthens the lyric's drop shadow with the sub-color, additive.
   const shadow =
-    anim.glow > 0
+    totalGlow > 0
       ? {
           ...baseShadow,
-          color: withAlpha(t.glowColor ?? t.lyricSubColor, 0.55 + anim.glow * 0.45),
-          blur: Math.max(baseShadow.blur, 18 + anim.glow * 36),
+          color: withAlpha(t.glowColor ?? t.lyricSubColor, 0.55 + totalGlow * 0.45),
+          blur: Math.max(baseShadow.blur, 18 + totalGlow * 40),
           offsetX: 0,
           offsetY: 0,
         }
@@ -734,6 +746,65 @@ export function wrapText(
     if (buf) out.push(buf);
   }
   return out;
+}
+
+function paintReactiveOverlay(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
+  const r = o.reactive;
+  if (!r || (r.pulse <= 0 && r.bloom <= 0 && r.waveformBoost <= 0)) return;
+  const t = o.template;
+
+  // Soft pulse: subtle inward darkening at the edges that breathes with the
+  // amplitude. Drawn as a radial-style gradient via two stacked rings of
+  // black with low alpha.
+  if (r.pulse > 0) {
+    const alpha = 0.18 * r.pulse;
+    const cx = SCENE_W / 2;
+    const cy = SCENE_H / 2;
+    const radius = SCENE_W * 0.85;
+    const grad = ctx.createRadialGradient(cx, cy, radius * 0.55, cx, cy, radius);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, `rgba(0,0,0,${alpha.toFixed(3)})`);
+    ctx.save();
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, SCENE_W, SCENE_H);
+    ctx.restore();
+  }
+
+  // Cinematic bloom: outer haze in the template's accent color.
+  if (r.bloom > 0) {
+    const alpha = 0.28 * r.bloom;
+    const accent = t.glowColor ?? t.lyricSubColor;
+    const cx = SCENE_W / 2;
+    const cy = SCENE_H / 2;
+    const radius = SCENE_W * 1.05;
+    const grad = ctx.createRadialGradient(cx, cy, radius * 0.45, cx, cy, radius);
+    grad.addColorStop(0, withAlpha(accent, alpha));
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, SCENE_W, SCENE_H);
+    ctx.restore();
+  }
+
+  // Waveform boost: brighten/widen the waveform area with an additive halo.
+  // The base waveform is drawn by ffmpeg drawbox in the export filter graph;
+  // this halo sits on top so peaks are visibly emphasized without changing
+  // bar heights (which would require runtime ffmpeg expression rewriting).
+  if (r.waveformBoost > 0 && t.showWaveform) {
+    const alpha = 0.35 * r.waveformBoost;
+    const yMid = Math.round(SCENE_H * 0.84);
+    const halfH = 90;
+    const grad = ctx.createLinearGradient(0, yMid - halfH, 0, yMid + halfH);
+    grad.addColorStop(0, withAlpha(t.lyricColor, 0));
+    grad.addColorStop(0.5, withAlpha(t.lyricColor, alpha));
+    grad.addColorStop(1, withAlpha(t.lyricColor, 0));
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = grad;
+    ctx.fillRect(60, yMid - halfH, SCENE_W - 120, halfH * 2);
+    ctx.restore();
+  }
 }
 
 function setCanvasFilter(ctx: CanvasRenderingContext2D, value: string): void {

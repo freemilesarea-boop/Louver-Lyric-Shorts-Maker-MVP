@@ -8,6 +8,8 @@ const api: LyricShortsAPI = {
   pickOutputDir: () => ipcRenderer.invoke('files:pickOutputDir'),
   defaultOutputDir: () => ipcRenderer.invoke('files:defaultOutputDir'),
   probeAudio: (path: string): Promise<AudioMeta> => ipcRenderer.invoke('files:probeAudio', path),
+  analyzeAmplitude: (path: string, startSec: number, durationSec: number) =>
+    ipcRenderer.invoke('audio:analyzeAmplitude', path, startSec, durationSec),
   readAsDataURL: (path: string) => ipcRenderer.invoke('files:readAsDataURL', path),
   fileExists: (path: string) => ipcRenderer.invoke('files:exists', path),
   basename: (path: string) => ipcRenderer.invoke('files:basename', path),

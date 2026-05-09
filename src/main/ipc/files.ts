@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import { join, basename } from 'node:path';
 import { spawn } from 'node:child_process';
 import { ffprobePath } from '../render/binaries';
+import { analyzeAmplitude } from '../audio/analyze';
 import type { AudioMeta } from '../../shared/types';
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp'];
@@ -47,6 +48,13 @@ export function registerFileHandlers(
   ipcMain.handle('files:probeAudio', async (_e, audioPath: string): Promise<AudioMeta> => {
     return probeDuration(audioPath);
   });
+
+  ipcMain.handle(
+    'audio:analyzeAmplitude',
+    async (_e, audioPath: string, startSec: number, durationSec: number) => {
+      return analyzeAmplitude(audioPath, startSec, durationSec);
+    },
+  );
 
   ipcMain.handle('files:readAsDataURL', async (_e, path: string) => {
     const data = await fs.readFile(path);

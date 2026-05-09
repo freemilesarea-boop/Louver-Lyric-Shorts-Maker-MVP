@@ -110,8 +110,9 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 4.5 | 프리뷰/출력 동일 scene renderer       | ✅ (1.5)   |
 | 4.6 | 사진 모션 (Ken Burns / pan / float)   | ✅ (2-1)   |
 | 4.7 | 가사 등장/퇴장 애니메이션             | ✅ (2-2)   |
+| 4.8 | 오디오 amplitude 리액티브             | ✅ (2-3)   |
 | 5   | Whisper 자동 가사 추출                | ⬜ 다음 단계 |
-| 6   | 단어별 하이라이트 / BPM 반응형        | ⬜ 다음 단계 |
+| 6   | BPM detection / 단어별 하이라이트     | ⬜ 다음 단계 |
 
 ### 1.5 변경 요약
 
@@ -140,6 +141,16 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
   보여줌. 7개 preset (`none` / `fade` / `slide_up` / `slide_down` /
   `blur_fade` / `soft_pop` / `karaoke_glow`). 모든 preset 이 같은 scene
   renderer 의 `paintLyric` 을 통과하므로 preview 와 export 결과가 일치.
+- **오디오 리액티브 (2-3)**: 메인 프로세스에서 ffmpeg 로 오디오 PCM 을
+  추출 → `buildAmplitudeCurve()` (RMS + moving average + 95퍼센타일
+  정규화) 로 0..1 normalized 진폭 곡선 생성 (~20 samples/sec). preview
+  와 export 모두 같은 곡선을 `reactiveStateAt(mode, curve, t)` 로 샘플링
+  → `{intensity, pulse, glow, bloom, waveformBoost}` 가 scene renderer 의
+  `paintLyric` (글로우 가산) 과 새 `paintReactiveOverlay` (vignette /
+  cinematic bloom / waveform halo) 를 구동. 6개 mode (`none` /
+  `soft_pulse` / `lyric_glow` / `waveform_boost` / `cinematic_bloom` /
+  `neon_pulse`). 모든 효과가 캔버스 오버레이 PNG 안에서 렌더되므로 export
+  filter graph 변경 없이 preview 와 1:1 일치.
 - **안정성**:
   - 입력 파일 검증 (존재/사이즈/타입) + 친절한 에러 메시지
   - 출력 폴더 쓰기 권한 사전 체크

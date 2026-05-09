@@ -38,6 +38,26 @@ export type AnimationPreset =
   | 'soft_pop'
   | 'karaoke_glow';
 
+/** Audio-reactive mode — drives subtle visual responses to amplitude. */
+export type ReactiveMode =
+  | 'none'
+  | 'soft_pulse'
+  | 'lyric_glow'
+  | 'waveform_boost'
+  | 'cinematic_bloom'
+  | 'neon_pulse';
+
+/**
+ * Pre-computed amplitude timeline. Sample `values[i]` covers the time slot
+ * `[i*intervalSec, (i+1)*intervalSec)`. Each value is in [0,1] after RMS,
+ * smoothing, and percentile normalization.
+ */
+export interface AmplitudeCurve {
+  intervalSec: number;
+  values: number[];
+  durationSec: number;
+}
+
 export interface FontStack {
   /** CSS font-family list. */
   base: string;
@@ -82,6 +102,8 @@ export interface Template {
   motionPreset?: MotionPreset;
   /** Default lyric animation. User can override per-project. */
   animationPreset?: AnimationPreset;
+  /** Default audio-reactive mode. User can override per-project. */
+  reactiveMode?: ReactiveMode;
 }
 
 export interface LyricLine {
@@ -123,6 +145,10 @@ export interface RenderRequest {
   motionPreset?: MotionPreset;
   /** Effective lyric animation preset for this render. */
   animationPreset?: AnimationPreset;
+  /** Effective reactive mode for this render. */
+  reactiveMode?: ReactiveMode;
+  /** Pre-computed amplitude curve for this clip range. */
+  amplitudeCurve?: AmplitudeCurve | null;
 }
 
 export interface RenderProgress {

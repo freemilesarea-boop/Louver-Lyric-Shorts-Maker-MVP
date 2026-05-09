@@ -44,6 +44,7 @@ const minimalWhite: Template = {
   decoration: 'none',
   motionPreset: 'slow_zoom_in',
   animationPreset: 'fade',
+  reactiveMode: 'soft_pulse',
 };
 
 const darkMusicPlayer: Template = {
@@ -75,6 +76,7 @@ const darkMusicPlayer: Template = {
   decoration: 'none',
   motionPreset: 'float_soft',
   animationPreset: 'blur_fade',
+  reactiveMode: 'cinematic_bloom',
 };
 
 const spotifyInspired: Template = {
@@ -106,6 +108,7 @@ const spotifyInspired: Template = {
   decoration: 'none',
   motionPreset: 'slow_zoom_in',
   animationPreset: 'slide_up',
+  reactiveMode: 'waveform_boost',
 };
 
 const appleMusicInspired: Template = {
@@ -137,6 +140,7 @@ const appleMusicInspired: Template = {
   decoration: 'none',
   motionPreset: 'pan_left',
   animationPreset: 'fade',
+  reactiveMode: 'cinematic_bloom',
 };
 
 const youtubeMusicInspired: Template = {
@@ -168,6 +172,7 @@ const youtubeMusicInspired: Template = {
   decoration: 'none',
   motionPreset: 'float_soft',
   animationPreset: 'soft_pop',
+  reactiveMode: 'soft_pulse',
 };
 
 const polaroidMood: Template = {
@@ -200,6 +205,7 @@ const polaroidMood: Template = {
   decoration: 'grain',
   motionPreset: 'slow_zoom_out',
   animationPreset: 'slide_down',
+  reactiveMode: 'soft_pulse',
 };
 
 const cassetteTape: Template = {
@@ -231,6 +237,7 @@ const cassetteTape: Template = {
   decoration: 'reels',
   motionPreset: 'pan_right',
   animationPreset: 'soft_pop',
+  reactiveMode: 'waveform_boost',
 };
 
 const vhsNight: Template = {
@@ -263,6 +270,7 @@ const vhsNight: Template = {
   decoration: 'scanlines',
   motionPreset: 'pan_right',
   animationPreset: 'blur_fade',
+  reactiveMode: 'cinematic_bloom',
 };
 
 const softKpopLyric: Template = {
@@ -294,6 +302,7 @@ const softKpopLyric: Template = {
   decoration: 'sparkles',
   motionPreset: 'float_soft',
   animationPreset: 'soft_pop',
+  reactiveMode: 'lyric_glow',
 };
 
 const neonDrive: Template = {
@@ -326,6 +335,7 @@ const neonDrive: Template = {
   decoration: 'none',
   motionPreset: 'slow_zoom_in',
   animationPreset: 'karaoke_glow',
+  reactiveMode: 'neon_pulse',
 };
 
 export const templates: Template[] = [

@@ -5,6 +5,7 @@ import {
   effectiveLanguage,
   effectiveMotion,
   effectiveAnimation,
+  effectiveReactive,
 } from '../store/projectStore';
 import { api } from '../lib/api';
 import { buildOverlays } from '../lib/overlays';
@@ -14,6 +15,7 @@ import LyricTimeline from '../components/LyricTimeline';
 import LanguageSelector from '../components/LanguageSelector';
 import MotionSelector from '../components/MotionSelector';
 import AnimationSelector from '../components/AnimationSelector';
+import ReactiveSelector from '../components/ReactiveSelector';
 import AudioRangeSelector from '../components/AudioRangeSelector';
 import TemplateGallery from '../components/TemplateGallery';
 
@@ -23,6 +25,7 @@ export default function EditorScreen(): JSX.Element {
   const language = effectiveLanguage(state);
   const motion = effectiveMotion(state);
   const animation = effectiveAnimation(state);
+  const reactive = effectiveReactive(state);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -30,6 +33,32 @@ export default function EditorScreen(): JSX.Element {
     if (!audioRef.current) return;
     audioRef.current.currentTime = state.startSec;
   }, [state.startSec]);
+
+  // Analyze amplitude when the audio path or selected range changes. The
+  // result is stored once and reused by both preview and export.
+  useEffect(() => {
+    let cancelled = false;
+    if (!state.audioPath) {
+      state.setAmplitudeCurve(null);
+      return;
+    }
+    api()
+      .analyzeAmplitude(state.audioPath, state.startSec, state.durationSec)
+      .then((curve) => {
+        if (!cancelled) state.setAmplitudeCurve(curve);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          // eslint-disable-next-line no-console
+          console.warn('[reactive] amplitude analysis failed:', err);
+          state.setAmplitudeCurve(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.audioPath, state.startSec, state.durationSec]);
 
   const onPreviewPlay = () => {
     if (!audioRef.current) return;
@@ -90,6 +119,8 @@ export default function EditorScreen(): JSX.Element {
         template,
         language,
         animationPreset: animation,
+        reactiveMode: reactive,
+        amplitudeCurve: state.amplitudeCurve,
         highlightSub: state.highlightKorean,
         durationSec: state.durationSec,
         trackTitle: state.trackTitle,
@@ -110,6 +141,8 @@ export default function EditorScreen(): JSX.Element {
         overlays,
         motionPreset: motion,
         animationPreset: animation,
+        reactiveMode: reactive,
+        amplitudeCurve: state.amplitudeCurve,
       });
 
       if (!result.ok) {
@@ -141,6 +174,8 @@ export default function EditorScreen(): JSX.Element {
             durationSec={state.durationSec}
             motionPreset={motion}
             animationPreset={animation}
+            reactiveMode={reactive}
+            amplitudeCurve={state.amplitudeCurve}
           />
         </div>
         <div className="mt-2 text-[10px] text-white/40">
@@ -164,6 +199,10 @@ export default function EditorScreen(): JSX.Element {
 
         <Section title="가사 애니메이션">
           <AnimationSelector />
+        </Section>
+
+        <Section title="오디오 리액티브">
+          <ReactiveSelector />
         </Section>
 
         <Section title="오디오 구간">

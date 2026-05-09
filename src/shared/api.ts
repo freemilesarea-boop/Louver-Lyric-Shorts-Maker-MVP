@@ -1,4 +1,10 @@
-import type { AudioMeta, RenderProgress, RenderRequest, RenderResult } from './types';
+import type {
+  AmplitudeCurve,
+  AudioMeta,
+  RenderProgress,
+  RenderRequest,
+  RenderResult,
+} from './types';
 
 export interface LyricShortsAPI {
   pickImage(): Promise<string | null>;
@@ -6,6 +12,7 @@ export interface LyricShortsAPI {
   pickOutputDir(): Promise<string | null>;
   defaultOutputDir(): Promise<string>;
   probeAudio(path: string): Promise<AudioMeta>;
+  analyzeAmplitude(path: string, startSec: number, durationSec: number): Promise<AmplitudeCurve>;
   readAsDataURL(path: string): Promise<string>;
   fileExists(path: string): Promise<boolean>;
   basename(path: string): Promise<string>;
