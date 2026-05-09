@@ -1,6 +1,7 @@
 import type {
   AmplitudeCurve,
   AnimationPreset,
+  FxPreset,
   LanguageCode,
   LyricLine,
   OverlayPng,
@@ -15,6 +16,7 @@ import {
   planKeyframes,
 } from '../../shared/animation';
 import { reactiveStateAt } from '../../shared/audioReactive';
+import { fxConfigForPreset } from '../../shared/cinematicFx';
 
 interface BuildOpts {
   lyrics: LyricLine[];
@@ -23,6 +25,7 @@ interface BuildOpts {
   animationPreset: AnimationPreset;
   reactiveMode: ReactiveMode;
   amplitudeCurve: AmplitudeCurve | null;
+  fxPreset: FxPreset;
   highlightSub: boolean;
   durationSec: number;
   trackTitle?: string;
@@ -62,6 +65,7 @@ export function sliceLyrics(lyrics: LyricLine[], durationSec: number): SlicedLyr
 export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
   const out: OverlayPng[] = [];
   const chunks = sliceLyrics(opts.lyrics, opts.durationSec);
+  const fxConfig = fxConfigForPreset(opts.fxPreset);
 
   for (const chunk of chunks) {
     const chunkDur = Math.max(0, chunk.end - chunk.start);
@@ -81,6 +85,9 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       // where the lyric/meta is visible (no extra ffmpeg machinery).
       const tClip = chunk.start + slot.sampleSec;
       const reactive = reactiveStateAt(opts.reactiveMode, opts.amplitudeCurve, tClip);
+      // Seed grain/dust per keyframe so each PNG has fresh noise but is
+      // reproducible. Resolution is ~50ms — enough to feel like film grain.
+      const fxSeed = Math.round(tClip * 1000) | 0;
 
       const png = await renderOverlayPng({
         template: opts.template,
@@ -89,6 +96,8 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
         lyric: chunk.line,
         animation: animState,
         reactive,
+        fxConfig,
+        fxSeed,
       });
       out.push({
         base64: png,
@@ -109,6 +118,9 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       lyric: null,
       trackTitle: opts.trackTitle,
       artistName: opts.artistName,
+      // Track meta is always-on; render with FX but no time-dependent seed.
+      fxConfig,
+      fxSeed: 0,
     });
     out.push({ base64: png, startSec: 0, endSec: opts.durationSec });
   }
@@ -125,6 +137,8 @@ interface OverlayPngOpts {
   artistName?: string;
   animation?: import('../../shared/animation').AnimationState;
   reactive?: import('../../shared/audioReactive').ReactiveState;
+  fxConfig?: import('../../shared/cinematicFx').FxConfig;
+  fxSeed?: number;
 }
 
 async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
@@ -146,6 +160,8 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     artistName: o.artistName,
     animation: o.animation,
     reactive: o.reactive,
+    fxConfig: o.fxConfig,
+    fxSeed: o.fxSeed,
   });
 
   return await canvasToBase64Png(canvas);

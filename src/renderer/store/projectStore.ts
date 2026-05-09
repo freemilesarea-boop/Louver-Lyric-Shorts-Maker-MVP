@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   AmplitudeCurve,
   AnimationPreset,
+  FxPreset,
   LanguageCode,
   LyricLine,
   MotionPreset,
@@ -48,6 +49,9 @@ interface ProjectState {
   /** Null = follow template default. Non-null = user override. */
   manualReactiveMode: ReactiveMode | null;
 
+  /** Null = follow template default. Non-null = user override. */
+  manualFxPreset: FxPreset | null;
+
   /** Pre-computed amplitude timeline for the active clip range. */
   amplitudeCurve: AmplitudeCurve | null;
 
@@ -76,6 +80,7 @@ interface ProjectState {
   setManualMotionPreset: (preset: MotionPreset | null) => void;
   setManualAnimationPreset: (preset: AnimationPreset | null) => void;
   setManualReactiveMode: (mode: ReactiveMode | null) => void;
+  setManualFxPreset: (preset: FxPreset | null) => void;
   setAmplitudeCurve: (curve: AmplitudeCurve | null) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
@@ -154,6 +159,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   manualMotionPreset: null,
   manualAnimationPreset: null,
   manualReactiveMode: null,
+  manualFxPreset: null,
   amplitudeCurve: null,
 
   selectedTemplateId: templates[0].id,
@@ -211,6 +217,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setManualMotionPreset: (manualMotionPreset) => set({ manualMotionPreset }),
   setManualAnimationPreset: (manualAnimationPreset) => set({ manualAnimationPreset }),
   setManualReactiveMode: (manualReactiveMode) => set({ manualReactiveMode }),
+  setManualFxPreset: (manualFxPreset) => set({ manualFxPreset }),
   setAmplitudeCurve: (amplitudeCurve) => set({ amplitudeCurve }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
@@ -245,4 +252,10 @@ export function effectiveReactive(state: ProjectState): ReactiveMode {
   if (state.manualReactiveMode) return state.manualReactiveMode;
   const tpl = templates.find((t) => t.id === state.selectedTemplateId) ?? templates[0];
   return tpl.reactiveMode ?? 'none';
+}
+
+export function effectiveFx(state: ProjectState): FxPreset {
+  if (state.manualFxPreset) return state.manualFxPreset;
+  const tpl = templates.find((t) => t.id === state.selectedTemplateId) ?? templates[0];
+  return tpl.cinematicFxPreset ?? 'none';
 }

@@ -111,6 +111,7 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 4.6 | 사진 모션 (Ken Burns / pan / float)   | ✅ (2-1)   |
 | 4.7 | 가사 등장/퇴장 애니메이션             | ✅ (2-2)   |
 | 4.8 | 오디오 amplitude 리액티브             | ✅ (2-3)   |
+| 4.9 | 시네마틱 FX (grain/bloom/leak/...)    | ✅ (2-4)   |
 | 5   | Whisper 자동 가사 추출                | ⬜ 다음 단계 |
 | 6   | BPM detection / 단어별 하이라이트     | ⬜ 다음 단계 |
 
@@ -151,6 +152,17 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
   `soft_pulse` / `lyric_glow` / `waveform_boost` / `cinematic_bloom` /
   `neon_pulse`). 모든 효과가 캔버스 오버레이 PNG 안에서 렌더되므로 export
   filter graph 변경 없이 preview 와 1:1 일치.
+- **시네마틱 FX 팩 (2-4)**: `src/shared/cinematicFx.ts` 의 8개 preset
+  (`none` / `clean_cinematic` / `subtle_bloom` / `soft_blur` / `dust_grain`
+  / `aberration_grain` / `bloom_neon` / `film_texture`) 이 grain / vignette
+  / chromatic aberration / bloom / dust / lightLeak / softBlur 인텐시티를
+  번들로 정의. 캔버스 2D 만으로 구현 (mulberry32 결정론적 PRNG 기반 grain·
+  dust + radial gradient vignette/bloom/leak + 가장자리 RGB stripe
+  aberration). Preview 는 RAF 의 `tNowSec*1000` 을 시드로, export 는
+  키프레임 `tClip*1000` 을 시드로 사용하므로 같은 시점은 같은 grain 패턴.
+  EDM/glitch 회피, premium emotional 톤 유지. paintCinematicFx 는 scene
+  renderer 의 마지막 레이어로 호출되어 모션·애니메이션·리액티브 모두 위에
+  얹힘.
 - **안정성**:
   - 입력 파일 검증 (존재/사이즈/타입) + 친절한 에러 메시지
   - 출력 폴더 쓰기 권한 사전 체크

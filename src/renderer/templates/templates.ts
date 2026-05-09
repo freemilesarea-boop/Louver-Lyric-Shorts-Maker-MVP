@@ -45,6 +45,7 @@ const minimalWhite: Template = {
   motionPreset: 'slow_zoom_in',
   animationPreset: 'fade',
   reactiveMode: 'soft_pulse',
+  cinematicFxPreset: 'clean_cinematic',
 };
 
 const darkMusicPlayer: Template = {
@@ -77,6 +78,7 @@ const darkMusicPlayer: Template = {
   motionPreset: 'float_soft',
   animationPreset: 'blur_fade',
   reactiveMode: 'cinematic_bloom',
+  cinematicFxPreset: 'subtle_bloom',
 };
 
 const spotifyInspired: Template = {
@@ -109,6 +111,7 @@ const spotifyInspired: Template = {
   motionPreset: 'slow_zoom_in',
   animationPreset: 'slide_up',
   reactiveMode: 'waveform_boost',
+  cinematicFxPreset: 'subtle_bloom',
 };
 
 const appleMusicInspired: Template = {
@@ -141,6 +144,7 @@ const appleMusicInspired: Template = {
   motionPreset: 'pan_left',
   animationPreset: 'fade',
   reactiveMode: 'cinematic_bloom',
+  cinematicFxPreset: 'soft_blur',
 };
 
 const youtubeMusicInspired: Template = {
@@ -173,6 +177,7 @@ const youtubeMusicInspired: Template = {
   motionPreset: 'float_soft',
   animationPreset: 'soft_pop',
   reactiveMode: 'soft_pulse',
+  cinematicFxPreset: 'clean_cinematic',
 };
 
 const polaroidMood: Template = {
@@ -206,6 +211,7 @@ const polaroidMood: Template = {
   motionPreset: 'slow_zoom_out',
   animationPreset: 'slide_down',
   reactiveMode: 'soft_pulse',
+  cinematicFxPreset: 'dust_grain',
 };
 
 const cassetteTape: Template = {
@@ -238,6 +244,7 @@ const cassetteTape: Template = {
   motionPreset: 'pan_right',
   animationPreset: 'soft_pop',
   reactiveMode: 'waveform_boost',
+  cinematicFxPreset: 'film_texture',
 };
 
 const vhsNight: Template = {
@@ -271,6 +278,7 @@ const vhsNight: Template = {
   motionPreset: 'pan_right',
   animationPreset: 'blur_fade',
   reactiveMode: 'cinematic_bloom',
+  cinematicFxPreset: 'aberration_grain',
 };
 
 const softKpopLyric: Template = {
@@ -303,6 +311,7 @@ const softKpopLyric: Template = {
   motionPreset: 'float_soft',
   animationPreset: 'soft_pop',
   reactiveMode: 'lyric_glow',
+  cinematicFxPreset: 'soft_blur',
 };
 
 const neonDrive: Template = {
@@ -336,6 +345,7 @@ const neonDrive: Template = {
   motionPreset: 'slow_zoom_in',
   animationPreset: 'karaoke_glow',
   reactiveMode: 'neon_pulse',
+  cinematicFxPreset: 'bloom_neon',
 };
 
 export const templates: Template[] = [

@@ -11,6 +11,7 @@ import { LANGUAGE_FONT_STACK } from './lang';
 import { drawImageWithMotion, isStaticMotion, motionAt } from './motion';
 import { REST_STATE, type AnimationState } from './animation';
 import { REST_REACTIVE, type ReactiveState } from './audioReactive';
+import { type FxConfig, paintCinematicFx } from './cinematicFx';
 
 /** Canonical export resolution. All layout math is computed against this size
  * and scaled for the live preview by passing width/height to the same code. */
@@ -191,6 +192,11 @@ export interface RenderSceneOpts {
   animation?: AnimationState;
   /** Audio-reactive state — drives subtle vignette / glow / bloom layers. */
   reactive?: ReactiveState;
+  /** Cinematic FX intensities — grain / vignette / aberration / bloom etc. */
+  fxConfig?: FxConfig;
+  /** Integer seed for the FX noise/dust positions (must agree across
+   *  preview & export at the same moment for parity). */
+  fxSeed?: number;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
@@ -235,6 +241,11 @@ export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): 
   // 7) Audio-reactive layers — render in BOTH modes so export PNG keyframes
   //    carry the bloom/vignette/glow that the preview shows.
   paintReactiveOverlay(ctx, o);
+
+  // 8) Cinematic FX — final layer on top of everything (grain/vignette/etc).
+  if (o.fxConfig) {
+    paintCinematicFx(ctx, SCENE_W, SCENE_H, o.fxConfig, o.fxSeed ?? 0, o.template);
+  }
 
   ctx.restore();
 }

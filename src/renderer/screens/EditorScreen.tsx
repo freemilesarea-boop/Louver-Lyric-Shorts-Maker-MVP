@@ -6,6 +6,7 @@ import {
   effectiveMotion,
   effectiveAnimation,
   effectiveReactive,
+  effectiveFx,
 } from '../store/projectStore';
 import { api } from '../lib/api';
 import { buildOverlays } from '../lib/overlays';
@@ -16,6 +17,7 @@ import LanguageSelector from '../components/LanguageSelector';
 import MotionSelector from '../components/MotionSelector';
 import AnimationSelector from '../components/AnimationSelector';
 import ReactiveSelector from '../components/ReactiveSelector';
+import CinematicFxSelector from '../components/CinematicFxSelector';
 import AudioRangeSelector from '../components/AudioRangeSelector';
 import TemplateGallery from '../components/TemplateGallery';
 
@@ -26,6 +28,7 @@ export default function EditorScreen(): JSX.Element {
   const motion = effectiveMotion(state);
   const animation = effectiveAnimation(state);
   const reactive = effectiveReactive(state);
+  const fxPreset = effectiveFx(state);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -121,6 +124,7 @@ export default function EditorScreen(): JSX.Element {
         animationPreset: animation,
         reactiveMode: reactive,
         amplitudeCurve: state.amplitudeCurve,
+        fxPreset,
         highlightSub: state.highlightKorean,
         durationSec: state.durationSec,
         trackTitle: state.trackTitle,
@@ -143,6 +147,7 @@ export default function EditorScreen(): JSX.Element {
         animationPreset: animation,
         reactiveMode: reactive,
         amplitudeCurve: state.amplitudeCurve,
+        fxPreset,
       });
 
       if (!result.ok) {
@@ -176,6 +181,7 @@ export default function EditorScreen(): JSX.Element {
             animationPreset={animation}
             reactiveMode={reactive}
             amplitudeCurve={state.amplitudeCurve}
+            fxPreset={fxPreset}
           />
         </div>
         <div className="mt-2 text-[10px] text-white/40">
@@ -203,6 +209,10 @@ export default function EditorScreen(): JSX.Element {
 
         <Section title="오디오 리액티브">
           <ReactiveSelector />
+        </Section>
+
+        <Section title="시네마틱 FX">
+          <CinematicFxSelector />
         </Section>
 
         <Section title="오디오 구간">

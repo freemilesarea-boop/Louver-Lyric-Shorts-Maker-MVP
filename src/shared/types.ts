@@ -47,6 +47,17 @@ export type ReactiveMode =
   | 'cinematic_bloom'
   | 'neon_pulse';
 
+/** Cinematic FX preset — bundles grain / vignette / aberration / bloom etc. */
+export type FxPreset =
+  | 'none'
+  | 'clean_cinematic'
+  | 'subtle_bloom'
+  | 'soft_blur'
+  | 'dust_grain'
+  | 'aberration_grain'
+  | 'bloom_neon'
+  | 'film_texture';
+
 /**
  * Pre-computed amplitude timeline. Sample `values[i]` covers the time slot
  * `[i*intervalSec, (i+1)*intervalSec)`. Each value is in [0,1] after RMS,
@@ -104,6 +115,8 @@ export interface Template {
   animationPreset?: AnimationPreset;
   /** Default audio-reactive mode. User can override per-project. */
   reactiveMode?: ReactiveMode;
+  /** Default cinematic FX preset. User can override per-project. */
+  cinematicFxPreset?: FxPreset;
 }
 
 export interface LyricLine {
@@ -149,6 +162,8 @@ export interface RenderRequest {
   reactiveMode?: ReactiveMode;
   /** Pre-computed amplitude curve for this clip range. */
   amplitudeCurve?: AmplitudeCurve | null;
+  /** Effective cinematic FX preset for this render. */
+  fxPreset?: FxPreset;
 }
 
 export interface RenderProgress {
