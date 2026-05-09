@@ -43,6 +43,7 @@ const minimalWhite: Template = {
   playIconStyle: 'minimal',
   decoration: 'none',
   motionPreset: 'slow_zoom_in',
+  animationPreset: 'fade',
 };
 
 const darkMusicPlayer: Template = {
@@ -73,6 +74,7 @@ const darkMusicPlayer: Template = {
   playIconStyle: 'rounded',
   decoration: 'none',
   motionPreset: 'float_soft',
+  animationPreset: 'blur_fade',
 };
 
 const spotifyInspired: Template = {
@@ -103,6 +105,7 @@ const spotifyInspired: Template = {
   playIconStyle: 'rounded',
   decoration: 'none',
   motionPreset: 'slow_zoom_in',
+  animationPreset: 'slide_up',
 };
 
 const appleMusicInspired: Template = {
@@ -133,6 +136,7 @@ const appleMusicInspired: Template = {
   playIconStyle: 'minimal',
   decoration: 'none',
   motionPreset: 'pan_left',
+  animationPreset: 'fade',
 };
 
 const youtubeMusicInspired: Template = {
@@ -163,6 +167,7 @@ const youtubeMusicInspired: Template = {
   playIconStyle: 'rounded',
   decoration: 'none',
   motionPreset: 'float_soft',
+  animationPreset: 'soft_pop',
 };
 
 const polaroidMood: Template = {
@@ -194,6 +199,7 @@ const polaroidMood: Template = {
   playIconStyle: 'none',
   decoration: 'grain',
   motionPreset: 'slow_zoom_out',
+  animationPreset: 'slide_down',
 };
 
 const cassetteTape: Template = {
@@ -224,6 +230,7 @@ const cassetteTape: Template = {
   playIconStyle: 'triangle',
   decoration: 'reels',
   motionPreset: 'pan_right',
+  animationPreset: 'soft_pop',
 };
 
 const vhsNight: Template = {
@@ -255,6 +262,7 @@ const vhsNight: Template = {
   playIconStyle: 'minimal',
   decoration: 'scanlines',
   motionPreset: 'pan_right',
+  animationPreset: 'blur_fade',
 };
 
 const softKpopLyric: Template = {
@@ -285,6 +293,7 @@ const softKpopLyric: Template = {
   playIconStyle: 'none',
   decoration: 'sparkles',
   motionPreset: 'float_soft',
+  animationPreset: 'soft_pop',
 };
 
 const neonDrive: Template = {
@@ -316,6 +325,7 @@ const neonDrive: Template = {
   playIconStyle: 'rounded',
   decoration: 'none',
   motionPreset: 'slow_zoom_in',
+  animationPreset: 'karaoke_glow',
 };
 
 export const templates: Template[] = [

@@ -1,7 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import type { LanguageCode, LyricLine, MotionPreset, Template } from '../../shared/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  AnimationPreset,
+  LanguageCode,
+  LyricLine,
+  MotionPreset,
+  Template,
+} from '../../shared/types';
 import { renderScene, SCENE_W, SCENE_H } from '../../shared/scene';
 import { isStaticMotion } from '../../shared/motion';
+import {
+  REST_STATE,
+  animationStateAt,
+  isStaticAnimation,
+} from '../../shared/animation';
+import { sliceLyrics } from '../lib/overlays';
 
 interface Props {
   imageDataUrl: string | null;
@@ -12,29 +24,27 @@ interface Props {
   trackTitle?: string;
   artistName?: string;
   durationSec: number;
-  /** Effective motion preset (template default OR user override). */
   motionPreset: MotionPreset;
-  /** Optional override of which line to show (for timeline scrubbing). */
+  animationPreset: AnimationPreset;
   forcedChunkIndex?: number | null;
 }
 
-const PREVIEW_FRAME_INTERVAL_MS = 1000 / 24; // 24fps preview repaint
+const PREVIEW_FRAME_INTERVAL_MS = 1000 / 30;
 
 /**
  * Canvas-based preview that renders at full 1080×1920 internally and uses CSS
- * to scale into its container. Because the export overlay generator uses the
- * same shared scene renderer, what you see is what you ship.
+ * to scale into its container.
  *
- * The preview keeps a continuous time loop so motion presets play back
- * smoothly. Lyric chunk cycling is decoupled from the time loop.
+ * The preview keeps a continuous time loop that drives BOTH motion (which
+ * cycles over the full duration) and lyric animation (which is sampled per
+ * chunk). The same shared scene renderer also powers the export overlay
+ * generator, so what shows here is what ships.
  */
 export default function LivePreview(props: Props): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [photo, setPhoto] = useState<HTMLImageElement | null>(null);
-  const [chunkIndex, setChunkIndex] = useState(0);
-  const [timeRatio, setTimeRatio] = useState(0);
+  const [tNowSec, setTNowSec] = useState(0);
 
-  // Load photo into an HTMLImageElement so canvas can drawImage it.
   useEffect(() => {
     if (!props.imageDataUrl) {
       setPhoto(null);
@@ -46,30 +56,24 @@ export default function LivePreview(props: Props): JSX.Element {
     img.src = props.imageDataUrl;
   }, [props.imageDataUrl]);
 
-  const visible = props.lyrics.filter(
-    (l) => (l.text && l.text.trim()) || (l.ko && l.ko.trim()),
+  // Compute clip-relative chunk windows once per inputs change.
+  const chunks = useMemo(
+    () => sliceLyrics(props.lyrics, props.durationSec),
+    [props.lyrics, props.durationSec],
   );
 
-  // Cycle through visible lyric chunks (independent of motion ratio).
-  useEffect(() => {
-    if (visible.length <= 1) {
-      setChunkIndex(0);
-      return;
-    }
-    const slice = (props.durationSec * 1000) / Math.max(1, visible.length);
-    const id = window.setInterval(
-      () => setChunkIndex((n) => (n + 1) % visible.length),
-      Math.max(800, slice),
-    );
-    return () => window.clearInterval(id);
-  }, [visible.length, props.durationSec]);
-
-  // Continuous time loop for motion + animated chrome.
+  // Continuous time loop: tNowSec ranges over [0, durationSec) and drives
+  // every animated layer (motion, lyric animation, progress, waveform).
   useEffect(() => {
     if (props.durationSec <= 0) return;
-    if (isStaticMotion(props.motionPreset) && !props.template.showWaveform && props.template.progressBarStyle === 'none') {
-      // Nothing animated to drive — leave timeRatio at 0.
-      setTimeRatio(0);
+    const animationsActive =
+      !isStaticAnimation(props.animationPreset) ||
+      !isStaticMotion(props.motionPreset) ||
+      props.template.showWaveform ||
+      props.template.progressBarStyle !== 'none' ||
+      chunks.length > 1;
+    if (!animationsActive) {
+      setTNowSec(0);
       return;
     }
     let raf = 0;
@@ -78,8 +82,8 @@ export default function LivePreview(props: Props): JSX.Element {
     const step = (now: number) => {
       if (now - last >= PREVIEW_FRAME_INTERVAL_MS) {
         const elapsed = (now - start) / 1000;
-        const ratio = (elapsed % props.durationSec) / props.durationSec;
-        setTimeRatio(ratio);
+        const t = elapsed % props.durationSec;
+        setTNowSec(t);
         last = now;
       }
       raf = requestAnimationFrame(step);
@@ -89,17 +93,39 @@ export default function LivePreview(props: Props): JSX.Element {
   }, [
     props.durationSec,
     props.motionPreset,
+    props.animationPreset,
     props.template.showWaveform,
     props.template.progressBarStyle,
+    chunks.length,
   ]);
 
-  const idx =
-    props.forcedChunkIndex != null
-      ? Math.max(0, Math.min(visible.length - 1, props.forcedChunkIndex))
-      : chunkIndex % Math.max(1, visible.length);
-  const currentLyric = visible[idx] ?? null;
+  // Pick the chunk active at tNowSec (or use forcedChunkIndex when scrubbing).
+  const activeIdx = useMemo(() => {
+    if (props.forcedChunkIndex != null) {
+      return Math.max(0, Math.min(chunks.length - 1, props.forcedChunkIndex));
+    }
+    if (chunks.length === 0) return -1;
+    for (let i = 0; i < chunks.length; i++) {
+      if (tNowSec >= chunks[i].start && tNowSec < chunks[i].end) return i;
+    }
+    // Past the last chunk — keep showing it during exit.
+    return chunks.length - 1;
+  }, [chunks, tNowSec, props.forcedChunkIndex]);
 
-  // Repaint whenever any input or animation tick changes.
+  const currentLyric = activeIdx >= 0 ? chunks[activeIdx].line : null;
+
+  // Compute animation state at this moment of the active chunk.
+  const animState = useMemo(() => {
+    if (activeIdx < 0) return REST_STATE;
+    const chunk = chunks[activeIdx];
+    const dur = Math.max(0, chunk.end - chunk.start);
+    const tInChunk = tNowSec - chunk.start;
+    return animationStateAt(props.animationPreset, dur, tInChunk);
+  }, [activeIdx, chunks, tNowSec, props.animationPreset]);
+
+  const timeRatio = props.durationSec > 0 ? tNowSec / props.durationSec : 0;
+
+  // Repaint on every state change.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -121,6 +147,7 @@ export default function LivePreview(props: Props): JSX.Element {
       photo,
       timeRatio,
       motionPreset: props.motionPreset,
+      animation: animState,
     });
   }, [
     photo,
@@ -132,6 +159,7 @@ export default function LivePreview(props: Props): JSX.Element {
     props.artistName,
     props.motionPreset,
     timeRatio,
+    animState,
   ]);
 
   return (

@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { LANGUAGE_FONT_STACK } from './lang';
 import { drawImageWithMotion, isStaticMotion, motionAt } from './motion';
+import { REST_STATE, type AnimationState } from './animation';
 
 /** Canonical export resolution. All layout math is computed against this size
  * and scaled for the live preview by passing width/height to the same code. */
@@ -185,6 +186,8 @@ export interface RenderSceneOpts {
   timeRatio?: number;
   /** Active photo motion preset (preview only). Defaults to template default. */
   motionPreset?: MotionPreset;
+  /** Animation state to apply when painting the lyric line (and meta). */
+  animation?: AnimationState;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
@@ -495,10 +498,38 @@ function paintLyric(
   const t = o.template;
   const colors = resolveColors(t, o.highlightSub);
   const font = resolveFontSpec(t, o.language);
-  const shadow = resolveShadow(t);
+  const baseShadow = resolveShadow(t);
   const pos = resolveLyricPositioning(t);
+  const anim = o.animation ?? REST_STATE;
+
+  // Skip painting once the line is fully invisible.
+  if (anim.opacity <= 0.001) return;
+
+  // Glow strengthens the lyric's drop shadow with the sub-color, additive.
+  const shadow =
+    anim.glow > 0
+      ? {
+          ...baseShadow,
+          color: withAlpha(t.glowColor ?? t.lyricSubColor, 0.55 + anim.glow * 0.45),
+          blur: Math.max(baseShadow.blur, 18 + anim.glow * 36),
+          offsetX: 0,
+          offsetY: 0,
+        }
+      : baseShadow;
 
   ctx.save();
+  ctx.globalAlpha *= clamp01(anim.opacity);
+  if (anim.blur > 0) {
+    setCanvasFilter(ctx, `blur(${anim.blur.toFixed(1)}px)`);
+  }
+  // Scale & translate around the lyric's vertical anchor so the motion
+  // pivots from the line's natural position.
+  const pivotY = pos.yEN + Math.round(font.sizeEN * 0.5);
+  ctx.translate(pos.xAnchor, pivotY);
+  if (anim.scale !== 1) ctx.scale(anim.scale, anim.scale);
+  if (anim.translateY !== 0) ctx.translate(0, anim.translateY);
+  ctx.translate(-pos.xAnchor, -pivotY);
+
   ctx.textAlign = pos.align;
   ctx.textBaseline = 'middle';
 
@@ -703,6 +734,16 @@ export function wrapText(
     if (buf) out.push(buf);
   }
   return out;
+}
+
+function setCanvasFilter(ctx: CanvasRenderingContext2D, value: string): void {
+  // ctx.filter is supported by Chromium, which is what Electron renders with.
+  // Cast through unknown for environments where the lib lacks the property.
+  (ctx as unknown as { filter: string }).filter = value;
+}
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
 }
 
 function fitContain(srcW: number, srcH: number, dstW: number, dstH: number) {

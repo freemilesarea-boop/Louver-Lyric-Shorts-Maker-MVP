@@ -28,6 +28,16 @@ export type MotionPreset =
   | 'pan_right'
   | 'float_soft';
 
+/** Lyric line entry/exit animation. Subtle, music-shorts style — never TikTok-y. */
+export type AnimationPreset =
+  | 'none'
+  | 'fade'
+  | 'slide_up'
+  | 'slide_down'
+  | 'blur_fade'
+  | 'soft_pop'
+  | 'karaoke_glow';
+
 export interface FontStack {
   /** CSS font-family list. */
   base: string;
@@ -70,6 +80,8 @@ export interface Template {
   decoration?: 'none' | 'scanlines' | 'grain' | 'sparkles' | 'reels';
   /** Default photo motion. User can override per-project. */
   motionPreset?: MotionPreset;
+  /** Default lyric animation. User can override per-project. */
+  animationPreset?: AnimationPreset;
 }
 
 export interface LyricLine {
@@ -109,6 +121,8 @@ export interface RenderRequest {
   overlays?: OverlayPng[];
   /** Effective motion preset for this render. Falls back to template default. */
   motionPreset?: MotionPreset;
+  /** Effective lyric animation preset for this render. */
+  animationPreset?: AnimationPreset;
 }
 
 export interface RenderProgress {

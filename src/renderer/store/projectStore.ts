@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  AnimationPreset,
   LanguageCode,
   LyricLine,
   MotionPreset,
@@ -39,6 +40,9 @@ interface ProjectState {
   /** Null = follow the selected template's default. Non-null = user override. */
   manualMotionPreset: MotionPreset | null;
 
+  /** Null = follow template default. Non-null = user override. */
+  manualAnimationPreset: AnimationPreset | null;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -62,6 +66,7 @@ interface ProjectState {
   setArtistName: (s: string) => void;
   setManualLanguage: (lang: LanguageCode | null) => void;
   setManualMotionPreset: (preset: MotionPreset | null) => void;
+  setManualAnimationPreset: (preset: AnimationPreset | null) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -137,6 +142,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   manualLanguage: null,
 
   manualMotionPreset: null,
+  manualAnimationPreset: null,
 
   selectedTemplateId: templates[0].id,
 
@@ -191,6 +197,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setArtistName: (artistName) => set({ artistName }),
   setManualLanguage: (manualLanguage) => set({ manualLanguage }),
   setManualMotionPreset: (manualMotionPreset) => set({ manualMotionPreset }),
+  setManualAnimationPreset: (manualAnimationPreset) => set({ manualAnimationPreset }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 
@@ -212,4 +219,10 @@ export function effectiveMotion(state: ProjectState): MotionPreset {
   if (state.manualMotionPreset) return state.manualMotionPreset;
   const tpl = templates.find((t) => t.id === state.selectedTemplateId) ?? templates[0];
   return tpl.motionPreset ?? 'none';
+}
+
+export function effectiveAnimation(state: ProjectState): AnimationPreset {
+  if (state.manualAnimationPreset) return state.manualAnimationPreset;
+  const tpl = templates.find((t) => t.id === state.selectedTemplateId) ?? templates[0];
+  return tpl.animationPreset ?? 'none';
 }

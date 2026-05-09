@@ -109,6 +109,7 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 4.5 | 줄별 타임싱크 편집 + 오디오 연동      | ✅ (1.5)   |
 | 4.5 | 프리뷰/출력 동일 scene renderer       | ✅ (1.5)   |
 | 4.6 | 사진 모션 (Ken Burns / pan / float)   | ✅ (2-1)   |
+| 4.7 | 가사 등장/퇴장 애니메이션             | ✅ (2-2)   |
 | 5   | Whisper 자동 가사 추출                | ⬜ 다음 단계 |
 | 6   | 단어별 하이라이트 / BPM 반응형        | ⬜ 다음 단계 |
 
@@ -133,6 +134,12 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
   `slow_zoom_in` / `slow_zoom_out` / `pan_left` / `pan_right` /
   `float_soft`). 템플릿마다 기본값 지정, 사용자가 select 로 오버라이드 가능.
   Frame 데코레이션은 화면 고정, 사진은 그 안에서 움직이는 Ken Burns 방식.
+- **가사 애니메이션 (2-2)**: `src/shared/animation.ts` 가 enter/hold/exit
+  3-phase 모델을 정의. preview는 RAF 로 연속 샘플, export 는 `planKeyframes()`
+  로 키프레임 PNG 시퀀스를 생성하고 ffmpeg `overlay enable=` 로 시점에 맞춰
+  보여줌. 7개 preset (`none` / `fade` / `slide_up` / `slide_down` /
+  `blur_fade` / `soft_pop` / `karaoke_glow`). 모든 preset 이 같은 scene
+  renderer 의 `paintLyric` 을 통과하므로 preview 와 export 결과가 일치.
 - **안정성**:
   - 입력 파일 검증 (존재/사이즈/타입) + 친절한 에러 메시지
   - 출력 폴더 쓰기 권한 사전 체크

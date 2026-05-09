@@ -1,10 +1,23 @@
-import type { LanguageCode, LyricLine, OverlayPng, Template } from '../../shared/types';
+import type {
+  AnimationPreset,
+  LanguageCode,
+  LyricLine,
+  OverlayPng,
+  Template,
+} from '../../shared/types';
 import { renderScene, SCENE_W, SCENE_H } from '../../shared/scene';
+import {
+  REST_STATE,
+  animationStateAt,
+  isStaticAnimation,
+  planKeyframes,
+} from '../../shared/animation';
 
 interface BuildOpts {
   lyrics: LyricLine[];
   template: Template;
   language: LanguageCode;
+  animationPreset: AnimationPreset;
   highlightSub: boolean;
   durationSec: number;
   trackTitle?: string;
@@ -46,13 +59,31 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
   const chunks = sliceLyrics(opts.lyrics, opts.durationSec);
 
   for (const chunk of chunks) {
-    const png = await renderOverlayPng({
-      template: opts.template,
-      language: opts.language,
-      highlightSub: opts.highlightSub,
-      lyric: chunk.line,
-    });
-    out.push({ base64: png, startSec: chunk.start, endSec: chunk.end });
+    const chunkDur = Math.max(0, chunk.end - chunk.start);
+    const slots = planKeyframes(opts.animationPreset, chunkDur);
+
+    for (const slot of slots) {
+      const animState = isStaticAnimation(opts.animationPreset)
+        ? REST_STATE
+        : animationStateAt(opts.animationPreset, chunkDur, slot.sampleSec);
+
+      // Skip near-invisible exit tail keyframes — saves overlays without
+      // visible impact. Always emit at least one keyframe per slot otherwise.
+      if (animState.opacity <= 0.02) continue;
+
+      const png = await renderOverlayPng({
+        template: opts.template,
+        language: opts.language,
+        highlightSub: opts.highlightSub,
+        lyric: chunk.line,
+        animation: animState,
+      });
+      out.push({
+        base64: png,
+        startSec: chunk.start + slot.windowStart,
+        endSec: chunk.start + slot.windowEnd,
+      });
+    }
   }
 
   if (
@@ -80,6 +111,7 @@ interface OverlayPngOpts {
   lyric: LyricLine | null;
   trackTitle?: string;
   artistName?: string;
+  animation?: import('../../shared/animation').AnimationState;
 }
 
 async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
@@ -99,6 +131,7 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     lyric: o.lyric,
     trackTitle: o.trackTitle,
     artistName: o.artistName,
+    animation: o.animation,
   });
 
   return await canvasToBase64Png(canvas);
