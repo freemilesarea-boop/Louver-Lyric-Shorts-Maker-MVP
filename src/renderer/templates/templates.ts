@@ -1,17 +1,30 @@
 import type { Template } from '../../shared/types';
 
 /**
- * MVP ships with 3 fully-tuned templates. The remaining 7 are scaffolded with
- * sensible defaults so the gallery is populated from day one — they can be
- * iterated on without touching render code.
+ * Each template combines a distinct font stack, frame style, shadow/glow
+ * choice, chrome (progress / play icon / waveform), and decoration so the
+ * gallery offers visibly different looks. Rendering is fully driven by these
+ * fields — the shared scene renderer in src/shared/scene.ts paints whatever
+ * the template says.
+ *
+ * IMPORTANT: do NOT clone Spotify / Apple Music / YouTube Music UI or logos.
+ * Those templates share only a color/feel hint with the named services.
  */
 
 const minimalWhite: Template = {
   id: 'minimal-white',
   name: 'Minimal White',
-  description: '깨끗한 흰 배경 카드 위 검정 가사',
-  fontFamily: 'Pretendard',
-  fontSize: 60,
+  description: '깨끗한 흰 배경, 큰 검정 가사',
+  fontFamily: '"Inter", "Pretendard", sans-serif',
+  fontStack: {
+    base: '"Inter", "Pretendard"',
+    byLang: {
+      ko: '"Pretendard", "Apple SD Gothic Neo"',
+      ja: '"Noto Sans JP"',
+      zh: '"Noto Sans SC"',
+    },
+  },
+  fontSize: 64,
   fontWeight: 700,
   lyricPosition: 'bottom',
   lyricColor: '#111111',
@@ -24,15 +37,24 @@ const minimalWhite: Template = {
   animationStyle: 'fade',
   cardBg: '#FFFFFF',
   overlayOpacity: 0.85,
+  frameStyle: 'rounded',
+  frameColor: '#FFFFFF',
+  shadowStyle: 'soft',
+  playIconStyle: 'minimal',
+  decoration: 'none',
 };
 
 const darkMusicPlayer: Template = {
   id: 'dark-music-player',
   name: 'Dark Music Player',
-  description: '어두운 배경 + 진한 자막 + 재생 컨트롤',
-  fontFamily: 'Pretendard',
-  fontSize: 56,
-  fontWeight: 600,
+  description: '딥다크 + 진한 자막 + 재생 컨트롤',
+  fontFamily: '"Inter", sans-serif',
+  fontStack: {
+    base: '"Inter"',
+    byLang: { ko: '"Pretendard"' },
+  },
+  fontSize: 58,
+  fontWeight: 700,
   lyricPosition: 'bottom',
   lyricColor: '#FFFFFF',
   lyricSubColor: '#FFD60A',
@@ -44,35 +66,24 @@ const darkMusicPlayer: Template = {
   animationStyle: 'slide',
   cardBg: '#0a0a0c',
   overlayOpacity: 0.55,
-};
-
-const polaroidMood: Template = {
-  id: 'polaroid-mood',
-  name: 'Polaroid Mood',
-  description: '폴라로이드 감성 + 페이크 웨이브폼',
-  fontFamily: 'Pretendard',
-  fontSize: 50,
-  fontWeight: 500,
-  lyricPosition: 'top',
-  lyricColor: '#1A1A1A',
-  lyricSubColor: '#E76F51',
-  lyricAlign: 'center',
-  showPlayerControl: false,
-  showWaveform: true,
-  progressBarStyle: 'none',
-  backgroundEffect: 'sepia',
-  animationStyle: 'none',
-  cardBg: '#F5EFE0',
-  overlayOpacity: 0.4,
+  frameStyle: 'rounded',
+  frameColor: '#1f1f29',
+  shadowStyle: 'soft',
+  playIconStyle: 'rounded',
+  decoration: 'none',
 };
 
 const spotifyInspired: Template = {
   id: 'spotify-inspired',
   name: 'Spotify Inspired',
-  description: '음악 스트리밍 느낌의 미니멀 컨트롤 (자체 디자인)',
-  fontFamily: 'Pretendard',
-  fontSize: 54,
-  fontWeight: 700,
+  description: '스트리밍 느낌, 좌측정렬 큰 글씨 (자체 디자인)',
+  fontFamily: '"Inter", sans-serif',
+  fontStack: {
+    base: '"Inter", "SF Pro Display"',
+    byLang: { ko: '"Pretendard"' },
+  },
+  fontSize: 60,
+  fontWeight: 800,
   lyricPosition: 'bottom',
   lyricColor: '#FFFFFF',
   lyricSubColor: '#1DB954',
@@ -84,14 +95,23 @@ const spotifyInspired: Template = {
   animationStyle: 'fade',
   cardBg: '#121212',
   overlayOpacity: 0.6,
+  frameStyle: 'rounded',
+  frameColor: '#181818',
+  shadowStyle: 'soft',
+  playIconStyle: 'rounded',
+  decoration: 'none',
 };
 
 const appleMusicInspired: Template = {
   id: 'apple-music-inspired',
   name: 'Apple Music Inspired',
-  description: '컬러 풀스크린 + 큰 타이포 (자체 디자인)',
-  fontFamily: 'Pretendard',
-  fontSize: 64,
+  description: '풀블리드 컬러 + 거대 타이포 (자체 디자인)',
+  fontFamily: '"SF Pro Display", "Inter", sans-serif',
+  fontStack: {
+    base: '"SF Pro Display", "Inter"',
+    byLang: { ko: '"Pretendard"' },
+  },
+  fontSize: 72,
   fontWeight: 800,
   lyricPosition: 'bottom',
   lyricColor: '#FFFFFF',
@@ -104,14 +124,23 @@ const appleMusicInspired: Template = {
   animationStyle: 'slide',
   cardBg: '#000000',
   overlayOpacity: 0.35,
+  frameStyle: 'rounded',
+  frameColor: '#000000',
+  shadowStyle: 'hard',
+  playIconStyle: 'minimal',
+  decoration: 'none',
 };
 
 const youtubeMusicInspired: Template = {
   id: 'youtube-music-inspired',
   name: 'YouTube Music Inspired',
-  description: '레드 액센트 + 깔끔한 카드 (자체 디자인)',
-  fontFamily: 'Pretendard',
-  fontSize: 52,
+  description: '레드 액센트 + 원형 카드 (자체 디자인)',
+  fontFamily: '"Inter", sans-serif',
+  fontStack: {
+    base: '"Inter", "Roboto"',
+    byLang: { ko: '"Pretendard"' },
+  },
+  fontSize: 54,
   fontWeight: 700,
   lyricPosition: 'center',
   lyricColor: '#FFFFFF',
@@ -124,34 +153,82 @@ const youtubeMusicInspired: Template = {
   animationStyle: 'fade',
   cardBg: '#0f0f0f',
   overlayOpacity: 0.55,
+  frameStyle: 'circle',
+  frameColor: '#0f0f0f',
+  shadowStyle: 'soft',
+  playIconStyle: 'rounded',
+  decoration: 'none',
+};
+
+const polaroidMood: Template = {
+  id: 'polaroid-mood',
+  name: 'Polaroid Mood',
+  description: '폴라로이드 보더 + 페이크 웨이브폼',
+  fontFamily: '"Caveat", "Pretendard", cursive',
+  fontStack: {
+    base: '"Caveat", "Pretendard"',
+    byLang: { ko: '"Pretendard"' },
+  },
+  fontSize: 56,
+  fontWeight: 600,
+  lyricPosition: 'top',
+  lyricColor: '#1A1A1A',
+  lyricSubColor: '#E76F51',
+  lyricAlign: 'center',
+  showPlayerControl: false,
+  showWaveform: true,
+  progressBarStyle: 'none',
+  backgroundEffect: 'sepia',
+  animationStyle: 'none',
+  cardBg: '#F5EFE0',
+  overlayOpacity: 0.4,
+  frameStyle: 'polaroid',
+  framePadding: 0.025,
+  frameColor: '#FFFCF2',
+  shadowStyle: 'soft',
+  playIconStyle: 'none',
+  decoration: 'grain',
 };
 
 const cassetteTape: Template = {
   id: 'cassette-tape',
   name: 'Cassette Tape',
-  description: '레트로 카세트 감성',
-  fontFamily: 'Pretendard',
-  fontSize: 48,
+  description: '레트로 카세트 보디 + 릴 데코',
+  fontFamily: '"Bebas Neue", "Inter", sans-serif',
+  fontStack: {
+    base: '"Bebas Neue", "Inter"',
+    byLang: { ko: '"Pretendard"' },
+  },
+  fontSize: 52,
   fontWeight: 700,
   lyricPosition: 'center',
   lyricColor: '#FFEFC8',
   lyricSubColor: '#FF6F61',
   lyricAlign: 'center',
   showPlayerControl: false,
-  showWaveform: true,
+  showWaveform: false,
   progressBarStyle: 'thick',
   backgroundEffect: 'sepia',
   animationStyle: 'none',
   cardBg: '#3b2a1a',
   overlayOpacity: 0.5,
+  frameStyle: 'cassette',
+  frameColor: '#d8b984',
+  shadowStyle: 'hard',
+  playIconStyle: 'triangle',
+  decoration: 'reels',
 };
 
 const vhsNight: Template = {
   id: 'vhs-night',
   name: 'VHS Night',
-  description: '심야 VHS 노이즈 무드',
-  fontFamily: 'Pretendard',
-  fontSize: 50,
+  description: '심야 VHS 노이즈 + 스캔라인',
+  fontFamily: '"VT323", "Inter", monospace',
+  fontStack: {
+    base: '"VT323", "IBM Plex Mono", monospace',
+    byLang: { ko: '"Pretendard"' },
+  },
+  fontSize: 56,
   fontWeight: 700,
   lyricPosition: 'bottom',
   lyricColor: '#E0FFFF',
@@ -164,15 +241,25 @@ const vhsNight: Template = {
   animationStyle: 'fade',
   cardBg: '#0a0014',
   overlayOpacity: 0.6,
+  frameStyle: 'photo',
+  frameColor: '#1c1c2e',
+  shadowStyle: 'glow',
+  glowColor: '#FF66FF',
+  playIconStyle: 'minimal',
+  decoration: 'scanlines',
 };
 
 const softKpopLyric: Template = {
   id: 'soft-kpop-lyric',
   name: 'Soft K-Pop Lyric',
-  description: '파스텔 무드 + 한국어 강조',
-  fontFamily: 'Pretendard',
-  fontSize: 56,
-  fontWeight: 600,
+  description: '파스텔 무드 + 스파클 데코',
+  fontFamily: '"Pretendard", "Inter", sans-serif',
+  fontStack: {
+    base: '"Pretendard", "Inter"',
+    byLang: { ko: '"Pretendard"' },
+  },
+  fontSize: 60,
+  fontWeight: 700,
   lyricPosition: 'bottom',
   lyricColor: '#FFFFFF',
   lyricSubColor: '#FFD8E8',
@@ -184,14 +271,23 @@ const softKpopLyric: Template = {
   animationStyle: 'fade',
   cardBg: '#FFB7C5',
   overlayOpacity: 0.5,
+  frameStyle: 'rounded',
+  frameColor: '#FFE6F0',
+  shadowStyle: 'soft',
+  playIconStyle: 'none',
+  decoration: 'sparkles',
 };
 
 const neonDrive: Template = {
   id: 'neon-drive',
   name: 'Neon Drive',
-  description: '네온 사이버펑크 무드',
-  fontFamily: 'Pretendard',
-  fontSize: 56,
+  description: '네온 사이버펑크 글로우 보더',
+  fontFamily: '"Orbitron", "Inter", sans-serif',
+  fontStack: {
+    base: '"Orbitron", "Inter"',
+    byLang: { ko: '"Pretendard"' },
+  },
+  fontSize: 60,
   fontWeight: 800,
   lyricPosition: 'center',
   lyricColor: '#00FFD1',
@@ -204,27 +300,26 @@ const neonDrive: Template = {
   animationStyle: 'slide',
   cardBg: '#06061a',
   overlayOpacity: 0.65,
+  frameStyle: 'neon-border',
+  frameColor: '#00FFD1',
+  glowColor: '#FF00C8',
+  shadowStyle: 'glow',
+  playIconStyle: 'rounded',
+  decoration: 'none',
 };
 
 export const templates: Template[] = [
   minimalWhite,
   darkMusicPlayer,
-  polaroidMood,
   spotifyInspired,
   appleMusicInspired,
   youtubeMusicInspired,
+  polaroidMood,
   cassetteTape,
   vhsNight,
   softKpopLyric,
   neonDrive,
 ];
-
-/** The 3 templates that are wired in for the first MVP milestone. */
-export const mvpReadyTemplateIds = new Set<string>([
-  'minimal-white',
-  'dark-music-player',
-  'polaroid-mood',
-]);
 
 export function getTemplate(id: string): Template {
   return templates.find((t) => t.id === id) ?? templates[0];

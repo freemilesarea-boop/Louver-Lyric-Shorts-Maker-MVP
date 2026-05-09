@@ -4,10 +4,33 @@ export type ProgressBarStyle = 'none' | 'thin' | 'thick' | 'rounded';
 export type BackgroundEffect = 'blur' | 'darken' | 'sepia' | 'none';
 export type AnimationStyle = 'none' | 'fade' | 'slide';
 
+export type LanguageCode = 'ko' | 'en' | 'ja' | 'zh' | 'es' | 'unknown';
+
+export type FrameStyle =
+  | 'none'
+  | 'polaroid'
+  | 'rounded'
+  | 'circle'
+  | 'cassette'
+  | 'vinyl'
+  | 'photo'
+  | 'neon-border';
+
+export type ShadowStyle = 'none' | 'soft' | 'hard' | 'glow' | 'outline';
+export type PlayIconStyle = 'triangle' | 'rounded' | 'minimal' | 'none';
+
+export interface FontStack {
+  /** CSS font-family list. */
+  base: string;
+  /** Optional override per language; falls back to base. */
+  byLang?: Partial<Record<LanguageCode, string>>;
+}
+
 export interface Template {
   id: string;
   name: string;
   description?: string;
+  /** Pure CSS family stack used at render time. */
   fontFamily: string;
   fontSize: number;
   fontWeight: number;
@@ -22,6 +45,20 @@ export interface Template {
   animationStyle: AnimationStyle;
   cardBg: string;
   overlayOpacity: number;
+
+  /* New 1.5 fields — all optional with sensible defaults so the type is
+     backwards-compatible with the original three templates. */
+  fontStack?: FontStack;
+  frameStyle?: FrameStyle;
+  /** Margin from photo edge to frame edge, as fraction of frame width. */
+  framePadding?: number;
+  frameColor?: string;
+  shadowStyle?: ShadowStyle;
+  /** Used when shadowStyle is 'glow' or 'neon-border' frame. */
+  glowColor?: string;
+  playIconStyle?: PlayIconStyle;
+  /** Optional decorative accents drawn on the overlay (template-specific). */
+  decoration?: 'none' | 'scanlines' | 'grain' | 'sparkles' | 'reels';
 }
 
 export interface LyricLine {
@@ -64,7 +101,7 @@ export interface RenderRequest {
 export interface RenderProgress {
   jobId: string;
   percent: number;
-  stage: 'preparing' | 'rendering' | 'finalizing' | 'done' | 'error';
+  stage: 'preparing' | 'rendering' | 'finalizing' | 'done' | 'error' | 'cancelled';
   message?: string;
   outputPath?: string;
 }

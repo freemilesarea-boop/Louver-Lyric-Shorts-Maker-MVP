@@ -14,6 +14,7 @@ const api: LyricShortsAPI = {
 
   startRender: (req: RenderRequest): Promise<RenderResult> =>
     ipcRenderer.invoke('render:start', req),
+  cancelRender: () => ipcRenderer.invoke('render:cancel'),
 
   onRenderProgress: (cb: (p: RenderProgress) => void) => {
     const listener = (_e: unknown, p: RenderProgress) => cb(p);

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { ChildProcess, spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,19 +14,38 @@ export interface RenderOk {
   outputPath: string;
 }
 
+/**
+ * Tracks the in-flight ffmpeg child so the IPC layer can request cancellation.
+ * Only one render runs at a time.
+ */
+let activeChild: ChildProcess | null = null;
+
+export function cancelActiveRender(): boolean {
+  if (!activeChild) return false;
+  try {
+    activeChild.kill('SIGTERM');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function runRender(
   req: RenderRequest,
   outputPath: string,
   onProgress: (percent: number) => void,
 ): Promise<RenderOk> {
-  if (!ffmpegPath) throw new Error('ffmpeg binary not found.');
+  if (!ffmpegPath) {
+    throw new Error('ffmpeg 바이너리를 찾을 수 없습니다. ffmpeg-static 설치를 확인하세요.');
+  }
 
-  await fs.access(req.imagePath).catch(() => {
-    throw new Error(`Image not found: ${req.imagePath}`);
-  });
-  await fs.access(req.audioPath).catch(() => {
-    throw new Error(`Audio not found: ${req.audioPath}`);
-  });
+  // Probe inputs.
+  await assertReadable(req.imagePath, '이미지');
+  await assertReadable(req.audioPath, '오디오');
+
+  // Probe output dir is writable.
+  const outDir = dirname(outputPath);
+  await assertWritableDir(outDir);
 
   const tempDir = await fs.mkdtemp(join(tmpdir(), 'lyric-shorts-'));
   try {
@@ -43,8 +62,8 @@ export async function runRender(
     // 2. Build filter graph. Inputs are: 0=image, 1=audio, 2..N=overlays.
     const overlayTimings: OverlayTiming[] = overlays.map((ov, i) => ({
       inputIndex: 2 + i,
-      startSec: Math.max(0, ov.startSec),
-      endSec: Math.min(req.durationSec, ov.endSec),
+      startSec: clamp(ov.startSec, 0, req.durationSec),
+      endSec: clamp(ov.endSec, 0, req.durationSec),
     }));
     const filter = buildFilterGraph({
       width: TARGET_W,
@@ -57,22 +76,18 @@ export async function runRender(
     const filterScriptPath = join(tempDir, 'filter.txt');
     await fs.writeFile(filterScriptPath, filter, 'utf8');
 
-    // 3. Compose ffmpeg argv.
+    // 3. Compose ffmpeg argv. Args are passed as an array (no shell), so spaces
+    //    and Korean characters in paths are handled safely on Windows/macOS.
     const args: string[] = ['-y'];
-    // Image (looped).
     args.push('-loop', '1', '-framerate', String(FPS), '-i', req.imagePath);
-    // Audio (trimmed).
     args.push(
       '-ss', String(Math.max(0, req.startSec)),
       '-t', String(req.durationSec),
       '-i', req.audioPath,
     );
-    // Overlay PNG inputs (each looped for full duration so overlay can show
-    // them at any time gated by `enable=`).
     for (const p of overlayPaths) {
       args.push('-loop', '1', '-framerate', String(FPS), '-i', p);
     }
-
     args.push('-filter_complex_script', filterScriptPath);
     args.push('-map', '[vout]', '-map', '1:a');
     args.push('-r', String(FPS));
@@ -98,7 +113,9 @@ function runFfmpeg(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpegPath, args, { windowsHide: true });
+    activeChild = child;
     let stderr = '';
+    let cancelled = false;
     child.stdout.on('data', (chunk: Buffer) => {
       const text = chunk.toString();
       for (const line of text.split('\n')) {
@@ -119,13 +136,83 @@ function runFfmpeg(
       stderr += chunk.toString();
       if (stderr.length > 16_000) stderr = stderr.slice(-16_000);
     });
-    child.on('error', reject);
-    child.on('close', (code) => {
+    child.on('error', (err) => {
+      activeChild = null;
+      reject(new Error(`ffmpeg 실행 실패: ${err.message}`));
+    });
+    child.on('close', (code, signal) => {
+      activeChild = null;
+      if (cancelled || signal === 'SIGTERM' || signal === 'SIGKILL') {
+        reject(new RenderCancelled());
+        return;
+      }
       if (code === 0) {
         resolve();
-      } else {
-        reject(new Error(`ffmpeg failed (exit ${code}). Last log:\n${stderr.slice(-2000)}`));
+        return;
       }
+      reject(
+        new Error(
+          `ffmpeg 렌더 실패 (exit ${code}). 마지막 로그:\n${stderr.slice(-2000)}`,
+        ),
+      );
+    });
+    // If somebody cancels via cancelActiveRender(), we'll see the SIGTERM via signal.
+    child.once('SIGTERM' as never, () => {
+      cancelled = true;
     });
   });
+}
+
+export class RenderCancelled extends Error {
+  constructor() {
+    super('Render cancelled by user.');
+    this.name = 'RenderCancelled';
+  }
+}
+
+async function assertReadable(path: string, label: string): Promise<void> {
+  try {
+    await fs.access(path);
+  } catch {
+    throw new Error(`${label} 파일을 찾을 수 없습니다: ${path}`);
+  }
+  try {
+    const stat = await fs.stat(path);
+    if (!stat.isFile()) {
+      throw new Error(`${label} 경로가 파일이 아닙니다: ${path}`);
+    }
+    if (stat.size === 0) {
+      throw new Error(`${label} 파일이 비어 있습니다: ${path}`);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith(`${label} `)) throw e;
+    throw new Error(
+      `${label} 파일 읽기 실패: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+async function assertWritableDir(dir: string): Promise<void> {
+  await fs.mkdir(dir, { recursive: true }).catch((e) => {
+    throw new Error(`출력 폴더를 만들 수 없습니다 (${dir}): ${e.message}`);
+  });
+  // Probe with a temp file.
+  const probe = join(dir, `.__write_probe_${Date.now()}`);
+  try {
+    await fs.writeFile(probe, '');
+    await fs.unlink(probe);
+  } catch (e) {
+    throw new Error(
+      `출력 폴더에 쓰기 권한이 없습니다 (${dir}): ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+function dirname(p: string): string {
+  const idx = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+  return idx > 0 ? p.slice(0, idx) : '.';
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
 }

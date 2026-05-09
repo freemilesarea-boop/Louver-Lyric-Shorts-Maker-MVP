@@ -1,7 +1,7 @@
 import { IpcMain, BrowserWindow, app } from 'electron';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { runRender } from '../render/pipeline';
+import { runRender, cancelActiveRender, RenderCancelled } from '../render/pipeline';
 import type { RenderRequest, RenderProgress, RenderResult } from '../../shared/types';
 
 export function registerRenderHandlers(
@@ -35,10 +35,18 @@ export function registerRenderHandlers(
       send({ jobId, percent: 100, stage: 'done', outputPath: result.outputPath });
       return { ok: true, outputPath: result.outputPath };
     } catch (err) {
+      if (err instanceof RenderCancelled) {
+        send({ jobId, percent: 0, stage: 'cancelled', message: err.message });
+        return { ok: false, error: 'cancelled' };
+      }
       const message = err instanceof Error ? err.message : String(err);
       send({ jobId, percent: 0, stage: 'error', message });
       return { ok: false, error: message };
     }
+  });
+
+  ipcMain.handle('render:cancel', () => {
+    return cancelActiveRender();
   });
 }
 

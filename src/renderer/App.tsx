@@ -17,7 +17,7 @@ export default function App(): JSX.Element {
       if (p.stage === 'done') {
         setIsRendering(false);
         if (p.outputPath) setLastOutputPath(p.outputPath);
-      } else if (p.stage === 'error') {
+      } else if (p.stage === 'error' || p.stage === 'cancelled') {
         setIsRendering(false);
       }
     });

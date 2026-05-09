@@ -5,11 +5,15 @@ export default function ExportScreen(): JSX.Element {
   const progress = useProjectStore((s) => s.lastRenderProgress);
   const isRendering = useProjectStore((s) => s.isRendering);
   const lastOutputPath = useProjectStore((s) => s.lastOutputPath);
+  const lastError = useProjectStore((s) => s.lastError);
   const setScreen = useProjectStore((s) => s.setScreen);
 
   const stage = progress?.stage ?? (isRendering ? 'preparing' : 'preparing');
   const percent = Math.round(progress?.percent ?? 0);
-  const error = stage === 'error' ? progress?.message ?? 'Unknown error' : null;
+  const cancelled = stage === 'cancelled';
+  const error = !cancelled
+    ? lastError ?? (stage === 'error' ? progress?.message ?? 'Unknown error' : null)
+    : null;
   const done = stage === 'done' && !!lastOutputPath;
 
   return (
@@ -27,12 +31,18 @@ export default function ExportScreen(): JSX.Element {
             <div
               className={[
                 'h-full transition-all duration-200',
-                error ? 'bg-red-400' : 'bg-accent',
+                error ? 'bg-red-400' : cancelled ? 'bg-white/30' : 'bg-accent',
               ].join(' ')}
               style={{ width: `${error ? 100 : percent}%` }}
             />
           </div>
         </div>
+
+        {cancelled && (
+          <div className="mt-6 rounded-md border border-white/20 bg-white/5 px-4 py-3 text-sm text-white/80">
+            <div className="font-semibold">렌더가 취소되었습니다.</div>
+          </div>
+        )}
 
         {error && (
           <div className="mt-6 whitespace-pre-wrap break-words rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -55,6 +65,14 @@ export default function ExportScreen(): JSX.Element {
           >
             ← 편집기로
           </button>
+          {isRendering && !done && (
+            <button
+              onClick={() => api().cancelRender()}
+              className="rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-red-500/20"
+            >
+              ⨯ 렌더 취소
+            </button>
+          )}
           {done && lastOutputPath && (
             <>
               <button
@@ -89,6 +107,8 @@ function stageLabel(stage: string): string {
       return '완료!';
     case 'error':
       return '오류';
+    case 'cancelled':
+      return '취소됨';
     default:
       return stage;
   }

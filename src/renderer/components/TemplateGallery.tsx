@@ -1,4 +1,4 @@
-import { templates, mvpReadyTemplateIds } from '../templates/templates';
+import { templates } from '../templates/templates';
 import { useProjectStore } from '../store/projectStore';
 
 export default function TemplateGallery(): JSX.Element {
@@ -9,7 +9,6 @@ export default function TemplateGallery(): JSX.Element {
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {templates.map((t) => {
         const active = t.id === selected;
-        const ready = mvpReadyTemplateIds.has(t.id);
         return (
           <button
             key={t.id}
@@ -21,6 +20,7 @@ export default function TemplateGallery(): JSX.Element {
                 : 'border-white/10 hover:border-white/30',
             ].join(' ')}
             style={{ backgroundColor: t.cardBg }}
+            title={t.description}
           >
             <div className="flex flex-1 items-end p-2">
               <div
@@ -33,12 +33,7 @@ export default function TemplateGallery(): JSX.Element {
               </div>
             </div>
             <div className="bg-black/30 px-2 py-1 text-[10px]">
-              <div className="truncate font-medium" style={{ color: '#fff' }}>
-                {t.name}
-              </div>
-              {!ready && (
-                <div className="text-[8px] uppercase tracking-wider text-white/50">beta</div>
-              )}
+              <div className="truncate font-medium text-white">{t.name}</div>
             </div>
           </button>
         );

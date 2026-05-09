@@ -11,6 +11,7 @@ export interface LyricShortsAPI {
   basename(path: string): Promise<string>;
 
   startRender(req: RenderRequest): Promise<RenderResult>;
+  cancelRender(): Promise<boolean>;
   onRenderProgress(cb: (p: RenderProgress) => void): () => void;
 
   openPath(path: string): Promise<string>;

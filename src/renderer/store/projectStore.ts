@@ -1,11 +1,13 @@
 import { create } from 'zustand';
-import type { LyricLine, RenderProgress, Template } from '../../shared/types';
+import type { LanguageCode, LyricLine, RenderProgress, Template } from '../../shared/types';
 import { templates } from '../templates/templates';
+import { detectLanguage } from '../../shared/lang';
 
 export type Screen = 'start' | 'editor' | 'export';
 
 interface ProjectState {
   screen: Screen;
+
   imagePath: string | null;
   imageDataUrl: string | null;
   audioPath: string | null;
@@ -14,11 +16,19 @@ interface ProjectState {
   startSec: number;
   durationSec: 15 | 30 | 60;
 
+  /** Free-form text the user typed/edited. */
   lyricsRaw: string;
+  /** Parsed structured lines, with optional Korean pairing and timing. */
   parsedLyrics: LyricLine[];
+
   highlightKorean: boolean;
   trackTitle: string;
   artistName: string;
+
+  /** Detected from lyricsRaw — recomputed whenever the text changes. */
+  detectedLanguage: LanguageCode;
+  /** Null = follow detection. Non-null = user picked manually. */
+  manualLanguage: LanguageCode | null;
 
   selectedTemplateId: string;
 
@@ -26,6 +36,7 @@ interface ProjectState {
   lastRenderProgress: RenderProgress | null;
   lastOutputPath: string | null;
   isRendering: boolean;
+  lastError: string | null;
 
   setScreen: (s: Screen) => void;
   setImage: (p: string | null, dataUrl?: string | null) => void;
@@ -33,25 +44,27 @@ interface ProjectState {
   setStartSec: (s: number) => void;
   setDurationSec: (d: 15 | 30 | 60) => void;
   setLyricsRaw: (raw: string) => void;
+  /** Update an individual parsed line's timing fields. */
+  updateLyricTiming: (index: number, patch: Partial<Pick<LyricLine, 'start' | 'end'>>) => void;
+  /** Distribute lines evenly across [0, durationSec]. */
+  redistributeLyricsEvenly: () => void;
   setHighlightKorean: (v: boolean) => void;
   setTrackTitle: (s: string) => void;
   setArtistName: (s: string) => void;
+  setManualLanguage: (lang: LanguageCode | null) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
   setRenderProgress: (p: RenderProgress) => void;
   setIsRendering: (v: boolean) => void;
   setLastOutputPath: (p: string | null) => void;
+  setLastError: (e: string | null) => void;
 }
 
 /**
  * Parse lyrics text into structured lines.
- * Pairs lines like:
- *   English line
- *   한국어 줄  (becomes ko of previous English line)
- * Or each line by itself if no Korean follows.
- *
- * Heuristic: a line is treated as Korean if it contains any Hangul code point.
+ * Pairs adjacent lines as (English, Korean) when one of them contains Hangul.
+ * Empty line = end-of-pair marker.
  */
 export function parseLyrics(raw: string): LyricLine[] {
   const lines = raw.split(/\r?\n/).map((l) => l.trim());
@@ -83,6 +96,16 @@ export function parseLyrics(raw: string): LyricLine[] {
   return out;
 }
 
+function distributeEvenly(lines: LyricLine[], durationSec: number): LyricLine[] {
+  if (lines.length === 0) return lines;
+  const slice = durationSec / lines.length;
+  return lines.map((l, i) => ({
+    ...l,
+    start: Number((i * slice).toFixed(2)),
+    end: Number(((i + 1) * slice).toFixed(2)),
+  }));
+}
+
 export const useProjectStore = create<ProjectState>((set) => ({
   screen: 'start',
   imagePath: null,
@@ -95,9 +118,13 @@ export const useProjectStore = create<ProjectState>((set) => ({
 
   lyricsRaw: '',
   parsedLyrics: [],
+
   highlightKorean: true,
   trackTitle: '',
   artistName: '',
+
+  detectedLanguage: 'unknown',
+  manualLanguage: null,
 
   selectedTemplateId: templates[0].id,
 
@@ -105,6 +132,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   lastRenderProgress: null,
   lastOutputPath: null,
   isRendering: false,
+  lastError: null,
 
   setScreen: (screen) => set({ screen }),
   setImage: (imagePath, imageDataUrl = null) =>
@@ -117,19 +145,52 @@ export const useProjectStore = create<ProjectState>((set) => ({
       startSec: 0,
     })),
   setStartSec: (startSec) => set({ startSec: Math.max(0, startSec) }),
-  setDurationSec: (durationSec) => set({ durationSec }),
-  setLyricsRaw: (lyricsRaw) => set({ lyricsRaw, parsedLyrics: parseLyrics(lyricsRaw) }),
+  setDurationSec: (durationSec) =>
+    set((s) => ({
+      durationSec,
+      // Re-distribute timings on duration change so lines stay within bounds.
+      parsedLyrics: s.parsedLyrics.length > 0
+        ? distributeEvenly(s.parsedLyrics, durationSec)
+        : s.parsedLyrics,
+    })),
+  setLyricsRaw: (lyricsRaw) =>
+    set((s) => {
+      const parsed = parseLyrics(lyricsRaw);
+      // Editing the text resets timings to even distribution. Per-line
+      // adjustments live in updateLyricTiming and survive non-text changes.
+      const distributed = distributeEvenly(parsed, s.durationSec);
+      const detection = detectLanguage(lyricsRaw);
+      return {
+        lyricsRaw,
+        parsedLyrics: distributed,
+        detectedLanguage: detection.language,
+      };
+    }),
+  updateLyricTiming: (index, patch) =>
+    set((s) => ({
+      parsedLyrics: s.parsedLyrics.map((l, i) => (i === index ? { ...l, ...patch } : l)),
+    })),
+  redistributeLyricsEvenly: () =>
+    set((s) => ({
+      parsedLyrics: distributeEvenly(s.parsedLyrics, s.durationSec),
+    })),
   setHighlightKorean: (highlightKorean) => set({ highlightKorean }),
   setTrackTitle: (trackTitle) => set({ trackTitle }),
   setArtistName: (artistName) => set({ artistName }),
+  setManualLanguage: (manualLanguage) => set({ manualLanguage }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 
   setRenderProgress: (lastRenderProgress) => set({ lastRenderProgress }),
   setIsRendering: (isRendering) => set({ isRendering }),
   setLastOutputPath: (lastOutputPath) => set({ lastOutputPath }),
+  setLastError: (lastError) => set({ lastError }),
 }));
 
 export function selectedTemplate(state: ProjectState): Template {
   return templates.find((t) => t.id === state.selectedTemplateId) ?? templates[0];
+}
+
+export function effectiveLanguage(state: ProjectState): LanguageCode {
+  return state.manualLanguage ?? state.detectedLanguage;
 }
