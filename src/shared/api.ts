@@ -52,6 +52,23 @@ export interface WhisperAvailability {
   kind?: 'python-whisper' | 'whisper-cpp';
 }
 
+export interface BundledFontVariant {
+  weight: number;
+  style: 'normal' | 'italic';
+  /** base64-encoded font bytes; empty when the file isn't on disk. */
+  base64: string;
+  filename: string;
+  loaded: boolean;
+}
+
+export interface BundledFontPayload {
+  /** Mirrors `FontKey` from shared/fonts.ts. Kept as a string here so the
+   *  preload doesn't pull the registry into the renderer's preload bundle. */
+  key: string;
+  family: string;
+  variants: BundledFontVariant[];
+}
+
 export interface LyricShortsAPI {
   pickImage(): Promise<string | null>;
   pickAudio(): Promise<string | null>;
@@ -66,6 +83,8 @@ export interface LyricShortsAPI {
   listCustomPresets(): Promise<CustomPreset[]>;
   saveCustomPreset(input: CustomPresetSaveInput): Promise<CustomPresetSaveReply>;
   deleteCustomPreset(id: string): Promise<{ ok: boolean }>;
+
+  loadBundledFonts(): Promise<BundledFontPayload[]>;
   readAsDataURL(path: string): Promise<string>;
   fileExists(path: string): Promise<boolean>;
   basename(path: string): Promise<string>;

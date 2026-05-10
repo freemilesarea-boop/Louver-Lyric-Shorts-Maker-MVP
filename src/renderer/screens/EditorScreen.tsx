@@ -26,6 +26,7 @@ import BatchPicker from '../components/BatchPicker';
 import CustomPresetPanel from '../components/CustomPresetPanel';
 import SafeZoneToggle from '../components/SafeZoneToggle';
 import HookSuggester from '../components/HookSuggester';
+import FontSelector from '../components/FontSelector';
 import { prettyErrorMessage } from '../../shared/errors';
 
 export default function EditorScreen(): JSX.Element {
@@ -139,6 +140,7 @@ export default function EditorScreen(): JSX.Element {
         artistName: state.artistName,
         karaokeEnabled: state.karaokeEnabled,
         lyricPositionOverride: state.manualLyricPosition,
+        fontKey: state.userFontKey,
       });
 
       const result = await api().startRender({
@@ -197,6 +199,7 @@ export default function EditorScreen(): JSX.Element {
             karaokeEnabled={state.karaokeEnabled}
             safeZone={{ enabled: state.safeZoneEnabled, platform: state.safeZonePlatform }}
             lyricPositionOverride={state.manualLyricPosition}
+            fontKey={state.userFontKey}
           />
         </div>
         <div className="mt-2 w-full">
@@ -239,6 +242,9 @@ export default function EditorScreen(): JSX.Element {
             </SubControl>
             <SubControl label="Cinematic FX">
               <CinematicFxSelector />
+            </SubControl>
+            <SubControl label="Font">
+              <FontSelector />
             </SubControl>
           </div>
         </Section>

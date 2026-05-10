@@ -162,6 +162,62 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 6. **Whisper bundling 옵션**: 초보 사용자용으로 whisper.cpp tiny 모델
    (~75MB) 번들 옵션 고려 — 앱 크기 trade-off.
 
+### 폰트 시스템
+
+`shared/fonts.ts` 의 `FontKey` 가 단일 source of truth. **preview 캔버스
+와 export PNG 키프레임이 같은 캔버스 코드 (`scene.ts`) 를 거치므로
+fontKey 한 번 선택 → 미리보기 + 결과 영상 동일 폰트** 로 렌더된다.
+
+> **참고**: 우리 파이프라인은 ffmpeg `drawtext` 를 사용하지 않는다.
+> Phase 1 에서 확인된 대로 `ffmpeg-static` 의 Linux 빌드는 `drawtext`
+> 필터 없이 출시된다. 모든 가사 텍스트는 캔버스에서 투명 PNG 로
+> 그려진 뒤 ffmpeg `overlay` 필터로 합성된다. 즉 "ffmpeg drawtext
+> fontfile" 의 역할은 우리에게 "캔버스에 폰트 등록" 으로 1:1 대응된다.
+
+| 적용 위치 | 코드 | 어떻게 fontKey 가 닿는가 |
+| --- | --- | --- |
+| Preview 라이브 캔버스 | `LivePreview.tsx` → `renderScene` → `paintLyric` | `props.fontKey` (store `userFontKey`) → `RenderSceneOpts.fontKey` → `resolveFontSpec(t, lang, key)` |
+| Export PNG 키프레임 | `overlays.ts buildOverlays` → `renderOverlayPng` → `renderScene` | `BuildOpts.fontKey` 가 매 키프레임 `RenderSceneOpts.fontKey` 로 전달 |
+| Batch render (5/10/N 항목) | `batchRender.ts runBatch` → `defaultBuildOverlays` | `BatchInputs.fontKey` 가 모든 batch 항목에 동일 적용 |
+| Demo pack (`npm run demo-pack`) | `scripts/demo-render-pack.ts` | 부팅 시 `GlobalFonts.registerFromPath` 로 모든 TTF 등록 → 같은 `renderScene` 호출 |
+
+#### 폰트 파일 번들링
+
+- 위치: `assets/fonts/<filename>.ttf`
+- 등록된 파일명은 `assets/fonts/README.md` + `src/shared/fonts.ts` 에서
+  확인. 누락된 파일은 자동으로 시스템 폰트 폴백 체인으로 떨어지고,
+  로더가 stderr 에 어떤 파일이 빠졌는지 한 줄 로그.
+- `package.json` 의 `build.extraResources` 가 `assets/fonts/` 의 모든
+  TTF/OTF/WOFF2 + README 를 패키지의 `Resources/assets/fonts/` 로 복사.
+- 메인 프로세스 `loadBundledFonts()` 는 packaged 빌드에서는
+  `process.resourcesPath/assets/fonts/`, 개발 빌드에서는
+  `<repo>/assets/fonts/` 를 읽음.
+
+#### 부팅 시점 등록
+
+`App.tsx` 가 첫 렌더 사이클에서 `loadBundledFontsIntoDocument()` 호출.
+- IPC `fonts:loadBundled` 로 메인이 base64 로 변환한 바이트를 회신
+- 각 변형마다 `new FontFace(family, bytes, { weight, style })` 생성 → `await ff.load()` → `document.fonts.add(ff)`
+- 로드 후 캔버스에서 `ctx.font = '700 60px "Pretendard", ...'` 같은 문자열
+  사용 시 자동으로 등록된 폰트가 선택됨
+
+#### Cross-platform 안전장치
+
+- `fontFamilyFor()` 는 항상 canonical family 를 큰따옴표로 감싸므로
+  공백 포함 family (`"Noto Sans KR"`) 도 `ctx.font` shorthand 에서 정상
+  파싱.
+- 파일 경로는 `path.join` 으로 구성 — Windows backslash / 한글 경로
+  문제 없음.
+- 누락 시 fallback: 시스템 폰트 (Pretendard ko 자체 미설치라면 Apple SD
+  Gothic Neo / Malgun Gothic / Noto Sans KR / system-ui 순서).
+
+#### 테스트 + 커맨드
+
+- `npm run test:fonts` — 레지스트리 모양, fontFamilyFor 출력, 언어별
+  기본 매핑, override 동작, 누락 파일 graceful 처리 검증.
+- 본 환경 결과: **모든 검증 통과** (assets/fonts 가 비어있는 상태에서도
+  `ctx.font` round-trip 성공 + measureText 정상 동작).
+
 ### Dist build 결과 (Phase 4-1)
 
 설치 파일 빌드는 `npm run dist:linux` / `dist:mac` / `dist:win` 으로

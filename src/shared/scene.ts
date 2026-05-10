@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { LANGUAGE_FONT_STACK } from './lang';
 import { drawImageWithMotion, isStaticMotion, motionAt } from './motion';
+import { FONTS, defaultFontForLanguage, fontFamilyFor, type FontKey } from './fonts';
 import { REST_STATE, type AnimationState } from './animation';
 import { REST_REACTIVE, type ReactiveState } from './audioReactive';
 import { type FxConfig, paintCinematicFx } from './cinematicFx';
@@ -78,10 +79,25 @@ export function resolveColors(t: Template, highlightSub: boolean): ResolvedColor
   };
 }
 
-export function resolveFontSpec(t: Template, lang: LanguageCode): FontSpec {
-  const base = t.fontStack?.byLang?.[lang] ?? t.fontStack?.base ?? t.fontFamily;
-  const langFallback = LANGUAGE_FONT_STACK[lang];
-  const family = `${base}, ${langFallback}`;
+export function resolveFontSpec(
+  t: Template,
+  lang: LanguageCode,
+  /** User pick from FontSelector. Wins over template's fontStack/fontFamily.
+   *  Null/undefined → fall back to the template's declared family chain. */
+  fontKeyOverride?: FontKey | null,
+): FontSpec {
+  // The single source of truth for the font feature: when the user picks
+  // (or we resolve a per-language default), `fontFamilyFor()` builds a
+  // CSS family list with the canonical name first and the fallback chain
+  // appended. The same string drives ctx.font in canvas (live preview +
+  // export bake) — no separate ffmpeg drawtext path; see fonts.ts header.
+  const family = fontKeyOverride
+    ? fontFamilyFor(fontKeyOverride)
+    : (() => {
+        const base = t.fontStack?.byLang?.[lang] ?? t.fontStack?.base ?? t.fontFamily;
+        const langFallback = LANGUAGE_FONT_STACK[lang];
+        return `${base}, ${langFallback}`;
+      })();
   return {
     family,
     sizeEN: t.fontSize,
@@ -91,6 +107,11 @@ export function resolveFontSpec(t: Template, lang: LanguageCode): FontSpec {
     letterSpacing: t.fontSize >= 60 ? -1 : 0,
   };
 }
+
+// Force-reference exports kept for tooling consumers that want the
+// per-language default lookup outside scene.ts.
+void FONTS;
+void defaultFontForLanguage;
 
 export function resolveShadow(t: Template): ShadowSpec {
   switch (t.shadowStyle ?? 'soft') {
@@ -218,6 +239,9 @@ export interface RenderSceneOpts {
   /** User override of the template's lyric Y position (auto-safe-position
    *  suggester). When set, takes precedence over template.lyricPosition. */
   lyricPositionOverride?: Template['lyricPosition'] | null;
+  /** User-picked font key. Wins over template font stack when set; null /
+   *  undefined falls back to template defaults + per-language hinting. */
+  fontKey?: FontKey | null;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
@@ -537,7 +561,7 @@ function paintLyric(
   if (!o.lyric) return;
   const t = o.template;
   const colors = resolveColors(t, o.highlightSub);
-  const font = resolveFontSpec(t, o.language);
+  const font = resolveFontSpec(t, o.language, o.fontKey ?? null);
   const baseShadow = resolveShadow(t);
   const pos = resolveLyricPositioning(t, o.lyricPositionOverride ?? null);
   const anim = o.animation ?? REST_STATE;
@@ -672,7 +696,7 @@ function paintMeta(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
       maxWidth: SCENE_W * 0.9,
       fontSize: 38,
       fontWeight: 700,
-      family: resolveFontSpec(t, o.language).family,
+      family: resolveFontSpec(t, o.language, o.fontKey ?? null).family,
       color: t.lyricColor,
       shadow: resolveShadow(t),
     });
@@ -685,7 +709,7 @@ function paintMeta(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
       maxWidth: SCENE_W * 0.9,
       fontSize: 28,
       fontWeight: 500,
-      family: resolveFontSpec(t, o.language).family,
+      family: resolveFontSpec(t, o.language, o.fontKey ?? null).family,
       color: withAlpha(t.lyricColor, 0.7),
       shadow: resolveShadow(t),
     });

@@ -7,6 +7,7 @@ import type {
   OverlayPng,
   Template,
 } from '../../shared/types';
+import type { FontKey } from '../../shared/fonts';
 import { templates } from '../templates/templates';
 import { SAMPLE_PRESETS } from '../samples/samplePresets';
 import type { BatchItem } from '../store/projectStore';
@@ -79,6 +80,8 @@ export interface BatchInputs {
   karaokeEnabled?: boolean;
   /** Auto-safe-position override applied to every batch item. */
   lyricPositionOverride?: LyricPosition | null;
+  /** User-picked font (FontSelector). Applied to every batch item. */
+  fontKey?: FontKey | null;
 }
 
 export interface BatchHooks {
@@ -143,6 +146,7 @@ export async function runBatch(
             artistName: inputs.artistName,
             karaokeEnabled: inputs.karaokeEnabled,
             lyricPositionOverride: inputs.lyricPositionOverride ?? null,
+            fontKey: inputs.fontKey ?? null,
           });
 
       const result = await api().startRender({

@@ -14,6 +14,7 @@ import type {
 } from '../../shared/types';
 import { templates } from '../templates/templates';
 import { detectLanguage } from '../../shared/lang';
+import type { FontKey } from '../../shared/fonts';
 
 export type Screen = 'start' | 'editor' | 'export';
 
@@ -88,6 +89,11 @@ interface ProjectState {
    *  lyricPosition. Non-null = override (applies to preview AND export). */
   manualLyricPosition: LyricPosition | null;
 
+  /** Single source of truth for the font feature. Null = follow the
+   *  per-language default (`defaultFontForLanguage`). Non-null = explicit
+   *  user pick — applies to preview canvas AND export PNG keyframes. */
+  userFontKey: FontKey | null;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -127,6 +133,7 @@ interface ProjectState {
   setSafeZoneEnabled: (v: boolean) => void;
   setSafeZonePlatform: (p: 'shorts' | 'reels' | 'tiktok') => void;
   setManualLyricPosition: (p: LyricPosition | null) => void;
+  setUserFontKey: (k: FontKey | null) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -219,6 +226,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   safeZoneEnabled: false,
   safeZonePlatform: 'shorts',
   manualLyricPosition: null,
+  userFontKey: null,
 
   selectedTemplateId: templates[0].id,
 
@@ -288,6 +296,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setSafeZoneEnabled: (safeZoneEnabled) => set({ safeZoneEnabled }),
   setSafeZonePlatform: (safeZonePlatform) => set({ safeZonePlatform }),
   setManualLyricPosition: (manualLyricPosition) => set({ manualLyricPosition }),
+  setUserFontKey: (userFontKey) => set({ userFontKey }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 

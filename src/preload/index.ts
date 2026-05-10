@@ -16,6 +16,8 @@ const api: LyricShortsAPI = {
   listCustomPresets: () => ipcRenderer.invoke('presets:list'),
   saveCustomPreset: (input) => ipcRenderer.invoke('presets:save', input),
   deleteCustomPreset: (id: string) => ipcRenderer.invoke('presets:delete', id),
+
+  loadBundledFonts: () => ipcRenderer.invoke('fonts:loadBundled'),
   readAsDataURL: (path: string) => ipcRenderer.invoke('files:readAsDataURL', path),
   fileExists: (path: string) => ipcRenderer.invoke('files:exists', path),
   basename: (path: string) => ipcRenderer.invoke('files:basename', path),

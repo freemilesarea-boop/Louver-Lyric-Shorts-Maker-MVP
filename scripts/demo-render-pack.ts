@@ -23,7 +23,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
-import { createCanvas, loadImage, type Image } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts, loadImage, type Image } from '@napi-rs/canvas';
 
 import {
   ANIMATION_KEYFRAME_FPS,
@@ -47,6 +47,7 @@ import {
 } from '../src/shared/motion.ts';
 import { renderScene, SCENE_W, SCENE_H } from '../src/shared/scene.ts';
 import { templates } from '../src/renderer/templates/templates.ts';
+import { FONTS } from '../src/shared/fonts.ts';
 import type {
   AnimationPreset,
   FxPreset,
@@ -63,6 +64,36 @@ const ffprobePath = (require('ffprobe-static') as { path: string }).path;
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT_DIR = join(REPO_ROOT, 'output', 'demo-pack');
+
+/**
+ * Register every bundled TTF/OTF declared in shared/fonts.ts with
+ * `@napi-rs/canvas` GlobalFonts so the headless renderer can emit
+ * exactly the same glyphs the Electron app would. Files that aren't on
+ * disk are skipped silently — node-canvas falls back to system fonts
+ * for that family, mirroring the renderer's CSS fallback chain.
+ */
+function registerBundledFonts(): void {
+  const fontsDir = join(REPO_ROOT, 'assets', 'fonts');
+  let registered = 0;
+  let missing = 0;
+  for (const def of Object.values(FONTS)) {
+    for (const f of def.files) {
+      const path = join(fontsDir, f.filename);
+      try {
+        const ok = GlobalFonts.registerFromPath(path, def.family);
+        if (ok) registered++;
+        else missing++;
+      } catch {
+        missing++;
+      }
+    }
+  }
+  console.log(
+    `[demo-pack] fonts: registered ${registered}, missing ${missing}` +
+      (missing > 0 ? ' (will use system fallbacks for missing families)' : ''),
+  );
+}
+registerBundledFonts();
 
 /* ---------------------------------------------------------------- combos */
 

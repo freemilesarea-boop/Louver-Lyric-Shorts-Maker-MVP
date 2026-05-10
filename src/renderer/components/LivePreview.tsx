@@ -20,6 +20,7 @@ import {
 import { isStaticReactive, reactiveStateAt } from '../../shared/audioReactive';
 import { fxConfigForPreset, isStaticFx } from '../../shared/cinematicFx';
 import { paintSafeZones, type SafePlatform } from '../../shared/safeZones';
+import type { FontKey } from '../../shared/fonts';
 import { sliceLyrics } from '../lib/overlays';
 
 interface Props {
@@ -43,6 +44,8 @@ interface Props {
   safeZone?: { enabled: boolean; platform: SafePlatform };
   /** Auto-safe-position override applied to the lyric Y. Null = no override. */
   lyricPositionOverride: LyricPosition | null;
+  /** User pick from FontSelector. Null = follow per-language default. */
+  fontKey: FontKey | null;
   forcedChunkIndex?: number | null;
 }
 
@@ -197,6 +200,7 @@ export default function LivePreview(props: Props): JSX.Element {
       fxSeed,
       karaoke,
       lyricPositionOverride: props.lyricPositionOverride,
+      fontKey: props.fontKey,
     });
     // Safe-zone overlay — preview-only. Painted last so it sits on top
     // of every other layer, including grain.
@@ -220,6 +224,7 @@ export default function LivePreview(props: Props): JSX.Element {
     karaoke,
     props.safeZone,
     props.lyricPositionOverride,
+    props.fontKey,
   ]);
 
   return (

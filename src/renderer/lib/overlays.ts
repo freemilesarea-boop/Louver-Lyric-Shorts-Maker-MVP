@@ -21,6 +21,7 @@ import {
 } from '../../shared/animation';
 import { reactiveStateAt } from '../../shared/audioReactive';
 import { fxConfigForPreset } from '../../shared/cinematicFx';
+import type { FontKey } from '../../shared/fonts';
 
 interface BuildOpts {
   lyrics: LyricLine[];
@@ -40,6 +41,9 @@ interface BuildOpts {
   /** Auto-safe-position override — wins over each template's
    *  lyricPosition when set (applies to every keyframe in this batch). */
   lyricPositionOverride?: LyricPosition | null;
+  /** User-picked font key (FontSelector). Wins over template font stack
+   *  when set; null/undefined falls back to per-language default. */
+  fontKey?: FontKey | null;
 }
 
 export interface SlicedLyric {
@@ -157,6 +161,7 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
           ? { enabled: true, progress: karaokeProgress }
           : undefined,
         lyricPositionOverride: opts.lyricPositionOverride ?? null,
+        fontKey: opts.fontKey ?? null,
       });
       out.push({
         base64: png,
@@ -180,6 +185,7 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       // Track meta is always-on; render with FX but no time-dependent seed.
       fxConfig,
       fxSeed: 0,
+      fontKey: opts.fontKey ?? null,
     });
     out.push({ base64: png, startSec: 0, endSec: opts.durationSec });
   }
@@ -200,6 +206,7 @@ interface OverlayPngOpts {
   fxSeed?: number;
   karaoke?: { enabled: boolean; progress: number };
   lyricPositionOverride?: LyricPosition | null;
+  fontKey?: FontKey | null;
 }
 
 async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
@@ -225,6 +232,7 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     fxSeed: o.fxSeed,
     karaoke: o.karaoke,
     lyricPositionOverride: o.lyricPositionOverride ?? null,
+    fontKey: o.fontKey ?? null,
   });
 
   return await canvasToBase64Png(canvas);

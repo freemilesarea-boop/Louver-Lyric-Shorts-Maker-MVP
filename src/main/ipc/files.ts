@@ -17,6 +17,7 @@ import {
   savePreset,
   type SaveInput,
 } from '../storage/customPresets';
+import { loadBundledFonts } from '../storage/fontFiles';
 import type { AudioMeta, LanguageCode, LyricLine } from '../../shared/types';
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp'];
@@ -121,6 +122,8 @@ export function registerFileHandlers(
   ipcMain.handle('presets:list', () => listPresets());
   ipcMain.handle('presets:save', (_e, input: SaveInput) => savePreset(input));
   ipcMain.handle('presets:delete', (_e, id: string) => deletePreset(id));
+
+  ipcMain.handle('fonts:loadBundled', () => loadBundledFonts());
 
   ipcMain.handle('files:readAsDataURL', async (_e, path: string) => {
     const data = await fs.readFile(path);

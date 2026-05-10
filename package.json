@@ -15,6 +15,7 @@
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:linux": "electron-vite build && electron-builder --linux",
     "demo-pack": "tsx scripts/demo-render-pack.ts",
+    "test:fonts": "tsx scripts/test-fonts.ts",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
@@ -49,6 +50,13 @@
     },
     "files": [
       "out/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/fonts",
+        "to": "assets/fonts",
+        "filter": ["**/*.ttf", "**/*.otf", "**/*.woff2", "README.md"]
+      }
     ],
     "mac": {
       "target": "dmg",

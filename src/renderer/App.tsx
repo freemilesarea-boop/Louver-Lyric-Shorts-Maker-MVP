@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useProjectStore } from './store/projectStore';
 import { api } from './lib/api';
+import { loadBundledFontsIntoDocument } from './lib/fontLoader';
 import StartScreen from './screens/StartScreen';
 import EditorScreen from './screens/EditorScreen';
 import ExportScreen from './screens/ExportScreen';
@@ -10,6 +11,13 @@ export default function App(): JSX.Element {
   const setRenderProgress = useProjectStore((s) => s.setRenderProgress);
   const setLastOutputPath = useProjectStore((s) => s.setLastOutputPath);
   const setIsRendering = useProjectStore((s) => s.setIsRendering);
+
+  // Boot-time bundled font registration. The promise resolves before
+  // the user can touch the editor in practice; if any FontFace fails
+  // we keep going on system fallbacks (logged to console).
+  useEffect(() => {
+    loadBundledFontsIntoDocument().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const off = api().onRenderProgress((p) => {
