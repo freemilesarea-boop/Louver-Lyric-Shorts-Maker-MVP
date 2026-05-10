@@ -30,6 +30,9 @@
  *      storage module against a fake userData dir.
  *
  * Run with:  npx tsx scripts/rc-qa.ts
+ *
+ * Phase 4-7 note: this harness is the final pre-flight before the CI
+ * matrix takes over. Local Linux pass + CI cross-OS pass = RC verified.
  */
 
 import { promises as fs } from 'node:fs';
