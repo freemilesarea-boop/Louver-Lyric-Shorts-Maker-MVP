@@ -3,6 +3,7 @@ import type {
   CustomPreset,
   LanguageCode,
   LyricLine,
+  LyricPosition,
   OverlayPng,
   Template,
 } from '../../shared/types';
@@ -76,6 +77,8 @@ export interface BatchInputs {
   outputDir: string;
   /** Bake karaoke word highlight into every batch item's overlays. */
   karaokeEnabled?: boolean;
+  /** Auto-safe-position override applied to every batch item. */
+  lyricPositionOverride?: LyricPosition | null;
 }
 
 export interface BatchHooks {
@@ -139,6 +142,7 @@ export async function runBatch(
             trackTitle: inputs.trackTitle,
             artistName: inputs.artistName,
             karaokeEnabled: inputs.karaokeEnabled,
+            lyricPositionOverride: inputs.lyricPositionOverride ?? null,
           });
 
       const result = await api().startRender({

@@ -5,6 +5,7 @@ import type {
   FxPreset,
   LanguageCode,
   LyricLine,
+  LyricPosition,
   MotionPreset,
   ReactiveMode,
   RenderProgress,
@@ -83,6 +84,10 @@ interface ProjectState {
   safeZoneEnabled: boolean;
   safeZonePlatform: 'shorts' | 'reels' | 'tiktok';
 
+  /** Auto-safe-position override. Null = use the template's own
+   *  lyricPosition. Non-null = override (applies to preview AND export). */
+  manualLyricPosition: LyricPosition | null;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -121,6 +126,7 @@ interface ProjectState {
   setKaraokeEnabled: (v: boolean) => void;
   setSafeZoneEnabled: (v: boolean) => void;
   setSafeZonePlatform: (p: 'shorts' | 'reels' | 'tiktok') => void;
+  setManualLyricPosition: (p: LyricPosition | null) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -212,6 +218,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   karaokeEnabled: false,
   safeZoneEnabled: false,
   safeZonePlatform: 'shorts',
+  manualLyricPosition: null,
 
   selectedTemplateId: templates[0].id,
 
@@ -280,6 +287,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setKaraokeEnabled: (karaokeEnabled) => set({ karaokeEnabled }),
   setSafeZoneEnabled: (safeZoneEnabled) => set({ safeZoneEnabled }),
   setSafeZonePlatform: (safeZonePlatform) => set({ safeZonePlatform }),
+  setManualLyricPosition: (manualLyricPosition) => set({ manualLyricPosition }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 

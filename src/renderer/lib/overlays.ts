@@ -4,6 +4,7 @@ import type {
   FxPreset,
   LanguageCode,
   LyricLine,
+  LyricPosition,
   OverlayPng,
   ReactiveMode,
   Template,
@@ -36,6 +37,9 @@ interface BuildOpts {
   /** When true, hold phase is subdivided into one keyframe per word so the
    *  active-word visual updates throughout the chunk. */
   karaokeEnabled?: boolean;
+  /** Auto-safe-position override — wins over each template's
+   *  lyricPosition when set (applies to every keyframe in this batch). */
+  lyricPositionOverride?: LyricPosition | null;
 }
 
 export interface SlicedLyric {
@@ -152,6 +156,7 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
         karaoke: opts.karaokeEnabled
           ? { enabled: true, progress: karaokeProgress }
           : undefined,
+        lyricPositionOverride: opts.lyricPositionOverride ?? null,
       });
       out.push({
         base64: png,
@@ -194,6 +199,7 @@ interface OverlayPngOpts {
   fxConfig?: import('../../shared/cinematicFx').FxConfig;
   fxSeed?: number;
   karaoke?: { enabled: boolean; progress: number };
+  lyricPositionOverride?: LyricPosition | null;
 }
 
 async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
@@ -218,6 +224,7 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     fxConfig: o.fxConfig,
     fxSeed: o.fxSeed,
     karaoke: o.karaoke,
+    lyricPositionOverride: o.lyricPositionOverride ?? null,
   });
 
   return await canvasToBase64Png(canvas);

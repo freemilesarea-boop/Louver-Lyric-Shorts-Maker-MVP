@@ -1,4 +1,4 @@
-import type { Template } from './types';
+import type { LyricPosition, Template } from './types';
 import { resolveLyricPositioning } from './scene';
 
 /**
@@ -159,8 +159,11 @@ export function lyricCollidesWithSafeZone(
   platform: SafePlatform,
   /** Canonical scene height (defaults to 1920). */
   sceneHeight = 1920,
+  /** Optional override (auto-safe-position suggester result) — use this
+   *  position instead of template.lyricPosition when computing Y. */
+  positionOverride?: LyricPosition | null,
 ): CollisionResult {
-  const pos = resolveLyricPositioning(template);
+  const pos = resolveLyricPositioning(template, positionOverride ?? null);
   const enHalf = Math.round(template.fontSize * 0.6);
   const koHalf = Math.round(template.fontSize * 0.6 * 0.78);
   const top = Math.min(pos.yEN - enHalf, pos.yKO - koHalf);
@@ -178,6 +181,61 @@ export function lyricCollidesWithSafeZone(
     message: `현재 자막 위치가 ${SAFE_PLATFORM_LABEL[platform]}의 ${labels} 영역과 겹칠 수 있어요. 가사 위치(top/center/bottom)를 바꿔보세요.`,
     zones: collisions.map((c) => c.rect),
   };
+}
+
+/**
+ * Pick a safe lyric position for `template` on `platform`. Tries
+ * positions in priority order (closest to the template's intent first)
+ * and returns the first one that doesn't trigger
+ * `lyricCollidesWithSafeZone`. Falls back to the most-permissive option
+ * if every candidate collides somehow.
+ *
+ * Used by the editor's "추천 위치 적용" button so the user can fix a
+ * collision warning with one click. The resulting LyricPosition is
+ * stored as a project-level override in projectStore (manualLyricPosition)
+ * and threaded into both the live preview and the export overlay
+ * generator.
+ */
+export const SAFE_POSITION_LABEL: Record<LyricPosition, string> = {
+  top: 'Top',
+  center: 'Center',
+  lower_center: 'Lower-center',
+  bottom_safe: 'Bottom (safe)',
+  bottom: 'Bottom',
+};
+
+export function suggestSafeLyricPosition(
+  template: Template,
+  platform: SafePlatform,
+): LyricPosition {
+  const candidates = candidatesFor(template.lyricPosition);
+  for (const c of candidates) {
+    if (!lyricCollidesWithSafeZone(template, platform, 1920, c).collides) {
+      return c;
+    }
+  }
+  // Nothing was collision-free — return the last candidate (most permissive).
+  return candidates[candidates.length - 1];
+}
+
+function candidatesFor(original: LyricPosition): LyricPosition[] {
+  switch (original) {
+    case 'top':
+      // Top is rarely covered; if it must move, drop into center / lower
+      // halves. Keep `bottom` last because it's the riskiest.
+      return ['top', 'center', 'lower_center', 'bottom_safe'];
+    case 'center':
+    case 'lower_center':
+      // Mid-screen lyric: stay near center, then try lower_center, then
+      // bottom_safe, only fall up to top as a last resort.
+      return ['center', 'lower_center', 'bottom_safe', 'top'];
+    case 'bottom':
+    case 'bottom_safe':
+    default:
+      // Originally bottom-anchored: keep "bottom-ish" feel by trying
+      // bottom_safe + lower_center first.
+      return ['bottom_safe', 'lower_center', 'center', 'top'];
+  }
 }
 
 function collectZonesPx(platform: SafePlatform, sceneHeight: number) {

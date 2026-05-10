@@ -131,13 +131,23 @@ export function resolveFrame(t: Template): FrameSpec {
   };
 }
 
-export function resolveLyricPositioning(t: Template): LyricPositioning {
+export function resolveLyricPositioning(
+  t: Template,
+  /** Optional user override (auto-safe-position suggester) — wins over
+   *  the template's own lyricPosition when set. */
+  override?: Template['lyricPosition'] | null,
+): LyricPositioning {
+  const effective = override ?? t.lyricPosition;
   const yBase = (() => {
-    switch (t.lyricPosition) {
+    switch (effective) {
       case 'top':
         return Math.round(SCENE_H * 0.12);
       case 'center':
         return Math.round(SCENE_H * 0.66);
+      case 'lower_center':
+        return Math.round(SCENE_H * 0.69);
+      case 'bottom_safe':
+        return Math.round(SCENE_H * 0.72);
       case 'bottom':
       default:
         return Math.round(SCENE_H * 0.78);
@@ -205,6 +215,9 @@ export interface RenderSceneOpts {
     /** 0..1 — clip-relative progress through the current chunk. */
     progress: number;
   };
+  /** User override of the template's lyric Y position (auto-safe-position
+   *  suggester). When set, takes precedence over template.lyricPosition. */
+  lyricPositionOverride?: Template['lyricPosition'] | null;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
@@ -526,7 +539,7 @@ function paintLyric(
   const colors = resolveColors(t, o.highlightSub);
   const font = resolveFontSpec(t, o.language);
   const baseShadow = resolveShadow(t);
-  const pos = resolveLyricPositioning(t);
+  const pos = resolveLyricPositioning(t, o.lyricPositionOverride ?? null);
   const anim = o.animation ?? REST_STATE;
   const reactive = o.reactive ?? REST_REACTIVE;
 

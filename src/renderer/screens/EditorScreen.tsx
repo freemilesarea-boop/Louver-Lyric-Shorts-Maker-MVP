@@ -137,6 +137,7 @@ export default function EditorScreen(): JSX.Element {
         trackTitle: state.trackTitle,
         artistName: state.artistName,
         karaokeEnabled: state.karaokeEnabled,
+        lyricPositionOverride: state.manualLyricPosition,
       });
 
       const result = await api().startRender({
@@ -194,6 +195,7 @@ export default function EditorScreen(): JSX.Element {
             fxPreset={fxPreset}
             karaokeEnabled={state.karaokeEnabled}
             safeZone={{ enabled: state.safeZoneEnabled, platform: state.safeZonePlatform }}
+            lyricPositionOverride={state.manualLyricPosition}
           />
         </div>
         <div className="mt-2 w-full">

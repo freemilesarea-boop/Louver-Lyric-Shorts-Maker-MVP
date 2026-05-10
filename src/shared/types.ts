@@ -1,4 +1,13 @@
-export type LyricPosition = 'top' | 'center' | 'bottom';
+export type LyricPosition =
+  | 'top'
+  | 'center'
+  /** Slightly lower than `center` — used by auto-safe-position suggester. */
+  | 'lower_center'
+  /** Just above the platform bottom-UI band — used by auto-safe-position
+   *  suggester. Visually similar to `bottom` but won't be covered by
+   *  Shorts/Reels/TikTok caption rows. */
+  | 'bottom_safe'
+  | 'bottom';
 export type LyricAlign = 'left' | 'center' | 'right';
 export type ProgressBarStyle = 'none' | 'thin' | 'thick' | 'rounded';
 export type BackgroundEffect = 'blur' | 'darken' | 'sepia' | 'none';

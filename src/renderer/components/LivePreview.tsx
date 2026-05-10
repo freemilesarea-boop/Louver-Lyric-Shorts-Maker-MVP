@@ -5,6 +5,7 @@ import type {
   FxPreset,
   LanguageCode,
   LyricLine,
+  LyricPosition,
   MotionPreset,
   ReactiveMode,
   Template,
@@ -40,6 +41,8 @@ interface Props {
    *  sits visually on top — and crucially, it never gets baked into the
    *  export PNG keyframes (overlays.ts doesn't import this). */
   safeZone?: { enabled: boolean; platform: SafePlatform };
+  /** Auto-safe-position override applied to the lyric Y. Null = no override. */
+  lyricPositionOverride: LyricPosition | null;
   forcedChunkIndex?: number | null;
 }
 
@@ -193,6 +196,7 @@ export default function LivePreview(props: Props): JSX.Element {
       fxConfig,
       fxSeed,
       karaoke,
+      lyricPositionOverride: props.lyricPositionOverride,
     });
     // Safe-zone overlay — preview-only. Painted last so it sits on top
     // of every other layer, including grain.
@@ -215,6 +219,7 @@ export default function LivePreview(props: Props): JSX.Element {
     fxSeed,
     karaoke,
     props.safeZone,
+    props.lyricPositionOverride,
   ]);
 
   return (
