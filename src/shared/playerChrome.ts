@@ -56,41 +56,58 @@ export function paintPlayerChrome(
   }
 }
 
+/**
+ * Card geometry shared by all three painters.
+ *
+ * Phase 5-3.2: chrome was painting at y=0.78..0.79 of the canvas, which
+ * landed on top of the bottom 50–73px of the main photo box (photo ends
+ * at y≈1570 with the Phase 5-3 92%×74% geometry). Combined with high
+ * panel alpha (apple 0.35, spotify 0.95 gradient bottom, youtube 0.92),
+ * the chrome read as a "giant black box covering the cover image."
+ *
+ * The fix is structural, not cosmetic: chrome now sits BELOW the photo,
+ * and the panel fills are dropped to glassmorphism levels. The photo is
+ * the visual anchor; chrome is a thin UI band layered underneath it.
+ */
+const CHROME_CARD_TOP = 1640;
+const CHROME_CARD_HEIGHT = 220;
+
 /* ----------------------------------------- Apple-like (light glass) */
 
 function paintAppleLikePlayer(ctx: CanvasRenderingContext2D, o: PlayerChromeOpts): void {
   const W = SCENE_W;
-  const H = SCENE_H;
   const cardX = 80;
   const cardW = W - cardX * 2;
-  const cardY = Math.round(H * 0.78);
-  const cardH = 240;
+  const cardY = CHROME_CARD_TOP;
+  const cardH = CHROME_CARD_HEIGHT;
   const accent = o.template.lyricSubColor;
   const fg = o.template.lyricColor;
 
-  // Soft glass card background — low-alpha black, subtle white border.
+  // Glassmorphism panel — ~22% black so the photo edge or background
+  // blur reads through. Hairline highlight at the top edge sells the
+  // glass feel without painting an opaque card.
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
   roundedRect(ctx, cardX, cardY, cardW, cardH, 28);
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
   ctx.fillRect(cardX, cardY, cardW, 1);
   ctx.restore();
 
   // Track title / artist line.
-  paintTrackLine(ctx, o, cardX + 28, cardY + 28, cardW - 56);
+  paintTrackLine(ctx, o, cardX + 28, cardY + 24, cardW - 56);
 
   // Thin progress bar.
-  const trackY = cardY + cardH - 78;
+  const trackY = cardY + cardH - 76;
   paintProgressBar(ctx, cardX + 28, trackY, cardW - 56, 4, o.ratio, accent, fg, 2);
 
   // Time labels.
   paintTimeRow(ctx, cardX + 28, trackY + 16, cardW - 56, o);
 
   // Play / prev / next group, minimal Apple-feel iconography.
-  const cy = cardY + cardH - 38;
+  const cy = cardY + cardH - 36;
   const cx = (W) / 2;
   drawPrevIcon(ctx, cx - 92, cy, 18, fg);
-  drawCirclePlay(ctx, cx, cy, 28, fg, 'rgba(255,255,255,0.08)');
+  drawCirclePlay(ctx, cx, cy, 26, fg, 'rgba(255,255,255,0.10)');
   drawNextIcon(ctx, cx + 92, cy, 18, fg);
 }
 
@@ -98,79 +115,81 @@ function paintAppleLikePlayer(ctx: CanvasRenderingContext2D, o: PlayerChromeOpts
 
 function paintSpotifyLikePlayer(ctx: CanvasRenderingContext2D, o: PlayerChromeOpts): void {
   const W = SCENE_W;
-  const H = SCENE_H;
   const cardX = 60;
   const cardW = W - cardX * 2;
-  const cardY = Math.round(H * 0.79);
-  const cardH = 230;
+  const cardY = CHROME_CARD_TOP;
+  const cardH = CHROME_CARD_HEIGHT;
   const fg = o.template.lyricColor;
   // Spotify-feel uses a green-ish accent — pull from template subColor so a
   // user changing template colors keeps them consistent.
   const accent = o.template.lyricSubColor;
 
-  // Dark card with subtle gradient.
+  // Dark glass — gradient capped at 0.30 alpha so the photo or blurred
+  // background still reads through. Was 0.85→0.95 which felt opaque.
   ctx.save();
   const grad = ctx.createLinearGradient(0, cardY, 0, cardY + cardH);
-  grad.addColorStop(0, 'rgba(18,18,18,0.85)');
-  grad.addColorStop(1, 'rgba(8,8,8,0.95)');
+  grad.addColorStop(0, 'rgba(18,18,18,0.20)');
+  grad.addColorStop(1, 'rgba(8,8,8,0.30)');
   ctx.fillStyle = grad;
   roundedRect(ctx, cardX, cardY, cardW, cardH, 18);
   ctx.restore();
 
   // Title / artist top-left.
-  paintTrackLine(ctx, o, cardX + 24, cardY + 26, cardW * 0.7);
+  paintTrackLine(ctx, o, cardX + 24, cardY + 22, cardW * 0.7);
 
   // Equalizer bars right of title — react to amplitude.
-  paintEqualizerBars(ctx, cardX + cardW - 140, cardY + 30, 110, 60, accent, o.amplitude);
+  paintEqualizerBars(ctx, cardX + cardW - 140, cardY + 28, 110, 56, accent, o.amplitude);
 
   // Slim progress bar near bottom.
-  const trackY = cardY + cardH - 64;
+  const trackY = cardY + cardH - 60;
   paintProgressBar(ctx, cardX + 24, trackY, cardW - 48, 3, o.ratio, accent, fg, 1.5);
   paintTimeRow(ctx, cardX + 24, trackY + 14, cardW - 48, o);
 
   // Centered play icon — bigger, rounded square.
-  const cy = cardY + cardH - 40;
-  drawCirclePlay(ctx, W / 2, cy, 22, fg, 'rgba(255,255,255,0.12)');
+  const cy = cardY + cardH - 36;
+  drawCirclePlay(ctx, W / 2, cy, 20, fg, 'rgba(255,255,255,0.12)');
 }
 
 /* ----------------------------------------- YouTube Music-like (dark + red) */
 
 function paintYoutubeLikePlayer(ctx: CanvasRenderingContext2D, o: PlayerChromeOpts): void {
   const W = SCENE_W;
-  const H = SCENE_H;
   const cardX = 60;
   const cardW = W - cardX * 2;
-  const cardY = Math.round(H * 0.79);
-  const cardH = 240;
+  const cardY = CHROME_CARD_TOP;
+  const cardH = CHROME_CARD_HEIGHT;
   const fg = o.template.lyricColor;
   const accent = o.template.lyricSubColor;
 
+  // Dark glass — was 0.92 (effectively solid). 0.30 reads as a panel
+  // overlay, not a placeholder cover container.
   ctx.save();
-  ctx.fillStyle = 'rgba(15,15,15,0.92)';
+  ctx.fillStyle = 'rgba(15,15,15,0.30)';
   roundedRect(ctx, cardX, cardY, cardW, cardH, 24);
   ctx.restore();
 
-  paintTrackLine(ctx, o, cardX + 24, cardY + 24, cardW - 48);
+  paintTrackLine(ctx, o, cardX + 24, cardY + 22, cardW - 48);
 
-  // Big circular play in the center.
-  const cy = cardY + cardH / 2 + 6;
+  // Red-accent circular play — the visual focus of the YT-Music feel.
+  // Sits centered in the chrome panel.
+  const cy = cardY + cardH / 2 + 8;
   const cx = W / 2;
   ctx.save();
   ctx.fillStyle = accent;
   ctx.beginPath();
-  ctx.arc(cx, cy, 36, 0, Math.PI * 2);
+  ctx.arc(cx, cy, 32, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = fg;
   ctx.beginPath();
-  ctx.moveTo(cx - 10, cy - 14);
-  ctx.lineTo(cx + 16, cy);
-  ctx.lineTo(cx - 10, cy + 14);
+  ctx.moveTo(cx - 9, cy - 13);
+  ctx.lineTo(cx + 14, cy);
+  ctx.lineTo(cx - 9, cy + 13);
   ctx.closePath();
   ctx.fill();
   ctx.restore();
 
   // Progress bar at the very bottom of the card.
-  const trackY = cardY + cardH - 36;
+  const trackY = cardY + cardH - 32;
   paintProgressBar(ctx, cardX + 24, trackY, cardW - 48, 3, o.ratio, accent, fg, 1.5);
   paintTimeRow(ctx, cardX + 24, trackY + 14, cardW - 48, o);
 }
