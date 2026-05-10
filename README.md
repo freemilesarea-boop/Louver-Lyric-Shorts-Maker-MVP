@@ -16,6 +16,7 @@ vertical short video. MVP focus:
 ```bash
 npm install
 npm run dev          # Electron + Vite dev 서버
+npm run demo-pack    # 20+ 데모 영상 일괄 생성 (output/demo-pack/)
 ```
 
 프로덕션:
@@ -31,6 +32,8 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 .
 ├── electron.vite.config.ts     # main / preload / renderer 빌드 설정
 ├── package.json
+├── scripts/
+│   └── demo-render-pack.ts     # 20+ 합성 데모 영상 일괄 생성기
 └── src/
     ├── shared/
     │   ├── api.ts              # window.lyric IPC 인터페이스
@@ -113,6 +116,7 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 4.8 | 오디오 amplitude 리액티브             | ✅ (2-3)   |
 | 4.9 | 시네마틱 FX (grain/bloom/leak/...)    | ✅ (2-4)   |
 | 5   | QA / 안정화 / 샘플 프리셋             | ✅ (2-5)   |
+| 5.1 | 데모 렌더 팩 (20+ 합성 시안)          | ✅ (3-1)   |
 | 6   | Whisper 자동 가사 추출                | ⬜ 다음 단계 |
 | 7   | BPM detection / 단어별 하이라이트     | ⬜ 다음 단계 |
 
@@ -182,6 +186,12 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
   - 종합 스모크 매트릭스 통과: 5 sample presets × 30s, 15s/30s 길이,
     1:1·4:5·16:9·9:16 이미지, 1줄/25줄 극단 가사, 한글 파일명+공백 경로,
     7가지 에러 매핑.
+- **데모 렌더 팩 (3-1)**: `npm run demo-pack` 으로 20개 합성 데모 영상을
+  `output/demo-pack/` 에 일괄 생성. 헤드리스 캔버스(`@napi-rs/canvas`) +
+  실제 shared 모듈 + 번들 ffmpeg 으로 동작. 5 샘플 프리셋 + 10개 템플릿
+  전체 + motion / animation / reactive / FX 다양 조합 × 7개 무드 (K-pop ·
+  드라이브 · 인디 · R&B · 발라드 · 네온 · 폴라로이드). 합성 photo /
+  audio / 가사 사용 — 외부 파일 의존성 없음.
 - **안정성**:
   - 입력 파일 검증 (존재/사이즈/타입) + 친절한 에러 메시지
   - 출력 폴더 쓰기 권한 사전 체크

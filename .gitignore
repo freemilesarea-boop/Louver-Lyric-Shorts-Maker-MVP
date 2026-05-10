@@ -10,3 +10,4 @@ release
 .cache
 *.tsbuildinfo
 .smoke-render.mjs
+output/
