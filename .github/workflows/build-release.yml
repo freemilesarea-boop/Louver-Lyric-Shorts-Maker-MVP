@@ -74,22 +74,26 @@ jobs:
       - name: Build sources
         run: npm run build
 
-      - name: Smoke tests (fonts, watermark, export presets)
-        # Pure-Node smoke checks. These are cross-platform and run on
-        # every OS so we catch host-specific regressions early — e.g.
-        # an export preset that produces a different bitrate envelope
-        # under Windows libx264, or a watermark glyph that shifts on
-        # macOS Core Text.
-        run: |
-          npm run test:fonts
-          npm run test:watermark
-          npm run test:export-presets
+      - name: Smoke test - fonts registry
+        run: npm run test:fonts
+
+      - name: Smoke test - watermark painter
+        run: npm run test:watermark
+
+      - name: Smoke test - export presets
+        # Real ffmpeg renders × 4 presets. Slowest of the smoke trio
+        # (~16s on Linux, longer on Windows). Pulls a host-OS ffmpeg
+        # binary and probes the output codec/bitrate/duration to confirm
+        # the encode argv reaches the muxer.
+        run: npm run test:export-presets
 
       - name: RC QA harness
         # Items 4-9 of RC-QA.md — watermark on/off renders, safe-zone
         # export exclusion, hook suggester, whisper graceful fallback,
         # Korean+spaced path round-trip, custom preset round-trip.
         # Cross-platform after rc-qa.ts shell:true on win32.
+        # On Windows this still runs under pwsh by default; the harness
+        # itself spawns child tsx processes via shell:true on win32.
         run: npm run test:rc-qa
 
       - name: Build dist installer
