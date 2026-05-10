@@ -1,6 +1,7 @@
 import { useProjectStore } from '../store/projectStore';
 import { api } from '../lib/api';
 import { useState } from 'react';
+import HelpPanel from '../components/HelpPanel';
 
 export default function StartScreen(): JSX.Element {
   const imagePath = useProjectStore((s) => s.imagePath);
@@ -40,14 +41,18 @@ export default function StartScreen(): JSX.Element {
   const canContinue = !!imagePath && !!audioPath;
 
   return (
-    <div className="flex h-full items-center justify-center px-8">
+    <div className="flex h-full items-center justify-center px-8 py-6 overflow-y-auto">
       <div className="w-full max-w-3xl">
         <h1 className="text-3xl font-bold tracking-tight">새 프로젝트 시작</h1>
         <p className="mt-2 text-sm text-white/60">
           이미지 1장과 오디오 1개를 선택하면 9:16 세로 영상으로 만들 수 있어요.
         </p>
 
-        <div className="mt-8 grid grid-cols-2 gap-5">
+        <div className="mt-5">
+          <HelpPanel />
+        </div>
+
+        <div className="mt-6 grid grid-cols-2 gap-5">
           <UploadCard
             label="이미지 업로드"
             sub="JPG, PNG, WEBP"

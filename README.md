@@ -100,6 +100,68 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 - 기본 위치: `~/Videos/LyricShorts/lyric_short_YYYYMMDD_HHMMSS.mp4`
 - Export 화면에서 폴더 열기 / 재생 가능
 
+## 테스트 빌드 준비 상태 (Phase 3-9)
+
+### Packaging (electron-builder)
+
+`package.json` `build` 블록에 다음 설정 완료:
+
+- **mac** dmg target · `public.app-category.video` · `build/icon.icns`
+- **win** nsis target · `oneClick: false` (사용자가 설치 위치 선택 가능) · `build/icon.ico`
+- **linux** AppImage target · `Audio` 카테고리 · `build/icon.png`
+- **asarUnpack**: ffmpeg-static / ffprobe-static 바이너리는 asar 밖으로
+  unpack 되어 `spawn()` 가능
+- **DevTools 자동 오픈**: 메인 프로세스에 `openDevTools()` 호출 없음
+  (확인됨)
+
+`build/README.md` 에 아이콘 placeholder 안내 — 파일이 없어도 빌드는
+성공하고 Electron 기본 로고로 동작.
+
+### 회귀 검증 (Phase 3-9)
+
+| 기능 | 상태 |
+| --- | --- |
+| 단일 렌더 (overlay PNG bake → ffmpeg 합성) | ✅ Phase 3-1 데모팩에서 검증 |
+| Batch render (5 sample / 10 templates / N custom) | ✅ Phase 3-3 단위 스모크 + 매트릭스 |
+| Whisper 미설치 감지 + 친절 안내 | ✅ Phase 3-2 Pass A 스모크 |
+| Whisper 설치 시 추출 → 가사 자동 입력 | ✅ Phase 3-2 Pass B 스모크 (스텁) |
+| 하이라이트 구간 추천 (amplitude) | ✅ Phase 3-8 합성 + 실제 ffmpeg 매트릭스 |
+| 커스텀 프리셋 저장/불러오기/삭제 | ✅ Phase 3-4 atomic write + 손상 JSON 복구 |
+| Safe Zone preview + 추천 위치 적용 | ✅ Phase 3-6, 3-7 충돌 매트릭스 |
+| Karaoke Lite (단어 하이라이트) | ✅ Phase 3-5 토큰화/액티브 idx |
+| Motion / Animation / Reactive / FX 스택 | ✅ Phase 2-1~2-5 합성 렌더 |
+| 한글 파일명 / 공백 경로 | ✅ Phase 2-5 안정성 매트릭스 |
+
+### 알려진 한계 / 위험 요소
+
+- **Whisper**: 앱이 자체적으로 번들하지 않음. 시스템 PATH 에 `whisper`
+  (Python) 또는 `whisper-cpp` 가 있어야 자동 가사 추출 동작. 미설치
+  시에는 비활성화 + 한국어 안내. **수동 입력은 항상 동작**.
+- **Safe Zone 좌표**: 플랫폼별 UI 위치는 실측 평균값. 폰 모델 / 앱
+  버전에 따라 ±2~3% 차이 — 보수적으로 잡아둠.
+- **Hook 추천 분석**: 클릭마다 전체 오디오를 16kHz mono PCM 으로
+  재추출. 4분 곡 기준 ~1초 분석. 5분 이상 곡은 첫 클릭이 약간 느릴 수
+  있음.
+- **Overlay 캡 (120 PNG)**: 가사 줄 25+ × 키프레임 fps 가 걸리면 자동
+  fps 감속. 매우 긴 가사는 애니메이션이 약간 단조롭게 보일 수 있음.
+- **출력 폴더 권한**: 사전 체크 (`fs.access` + write probe). 권한 실패
+  시 한국어 메시지 + 다른 폴더 선택 유도.
+- **드로잉 모드**: 모든 자막 텍스트는 캔버스로 PNG 베이크. 글꼴은
+  시스템 글꼴 (Pretendard / Apple SD Gothic Neo / Noto Sans KR /
+  Inter 등 fallback chain). macOS / Windows 둘 다 한국어 폰트 기본
+  탑재. Linux 빌드는 사용자 시스템에 한국어 폰트가 없으면 □ 깨짐 가능.
+
+### 남은 TODO (배포 후 대응)
+
+1. **아이콘 에셋**: `build/icon.{png,ico,icns}` 실제 파일 추가 (디자이너).
+2. **macOS notarization**: 첫 dmg 배포 전 Apple Developer ID 서명 +
+   notarize 단계 (CI 또는 수동).
+3. **Windows code signing**: nsis 설치 마법사 신뢰 경고 회피.
+4. **Auto update**: 현재 미설정. 첫 배포 후 `electron-updater` 검토.
+5. **Telemetry / 로그 수집**: 사용자 동의 후 익명 에러 텔레메트리 (Sentry).
+6. **Whisper bundling 옵션**: 초보 사용자용으로 whisper.cpp tiny 모델
+   (~75MB) 번들 옵션 고려 — 앱 크기 trade-off.
+
 ## 우선순위 / 로드맵
 
 | Pri | 기능                                  | 상태       |
