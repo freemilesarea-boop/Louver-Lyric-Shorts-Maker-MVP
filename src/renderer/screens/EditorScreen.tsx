@@ -21,6 +21,7 @@ import CinematicFxSelector from '../components/CinematicFxSelector';
 import AudioRangeSelector from '../components/AudioRangeSelector';
 import TemplateGallery from '../components/TemplateGallery';
 import SamplePresetPicker from '../components/SamplePresetPicker';
+import TranscribeButton from '../components/TranscribeButton';
 import { prettyErrorMessage } from '../../shared/errors';
 
 export default function EditorScreen(): JSX.Element {
@@ -238,12 +239,15 @@ export default function EditorScreen(): JSX.Element {
         </Section>
 
         <Section title="가사">
-          <LyricsEditor
-            lyricsRaw={state.lyricsRaw}
-            onChangeRaw={state.setLyricsRaw}
-            highlightKorean={state.highlightKorean}
-            onChangeHighlightKorean={state.setHighlightKorean}
-          />
+          <div className="space-y-3">
+            <TranscribeButton />
+            <LyricsEditor
+              lyricsRaw={state.lyricsRaw}
+              onChangeRaw={state.setLyricsRaw}
+              highlightKorean={state.highlightKorean}
+              onChangeHighlightKorean={state.setHighlightKorean}
+            />
+          </div>
         </Section>
 
         <Section title="줄별 타임라인">

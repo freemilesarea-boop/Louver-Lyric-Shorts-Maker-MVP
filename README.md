@@ -117,7 +117,7 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 4.9 | 시네마틱 FX (grain/bloom/leak/...)    | ✅ (2-4)   |
 | 5   | QA / 안정화 / 샘플 프리셋             | ✅ (2-5)   |
 | 5.1 | 데모 렌더 팩 (20+ 합성 시안)          | ✅ (3-1)   |
-| 6   | Whisper 자동 가사 추출                | ⬜ 다음 단계 |
+| 6   | Whisper 자동 가사 추출                | ✅ (3-2)   |
 | 7   | BPM detection / 단어별 하이라이트     | ⬜ 다음 단계 |
 
 ### 1.5 변경 요약
@@ -192,6 +192,17 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
   전체 + motion / animation / reactive / FX 다양 조합 × 7개 무드 (K-pop ·
   드라이브 · 인디 · R&B · 발라드 · 네온 · 폴라로이드). 합성 photo /
   audio / 가사 사용 — 외부 파일 의존성 없음.
+- **Whisper 자동 가사 추출 (3-2)**: Editor 가사 섹션에 "✨ AI 가사 추출"
+  버튼 추가. 클릭 시 메인 프로세스가 (1) 시스템 PATH 에서 `whisper`
+  (OpenAI Python whisper) 또는 `whisper-cpp` / `whisper-cli` 바이너리를
+  탐지 → (2) 선택된 오디오 구간을 ffmpeg 로 16kHz mono WAV 로 잘라내고
+  → (3) whisper 를 실행해 segment 단위 timing JSON 을 받아 → (4) 줄
+  단위 LyricLine 으로 변환해 가사 textarea + 타임라인에 자동 반영. 감지
+  된 언어 코드는 manualLanguage 로 setting 되어 폰트 스택까지 전환됨.
+  whisper 미설치 시 → 친절한 한국어 안내 (`pip install openai-whisper`
+  또는 `brew install whisper-cpp`) + 버튼 비활성화. 추출 중 SIGTERM
+  취소 가능. **수동 입력은 영향 없음** — 버튼은 LyricsEditor 위에
+  추가되었을 뿐이고, textarea / 타임라인 / 렌더 경로는 그대로 유지.
 - **안정성**:
   - 입력 파일 검증 (존재/사이즈/타입) + 친절한 에러 메시지
   - 출력 폴더 쓰기 권한 사전 체크

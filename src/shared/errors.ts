@@ -63,6 +63,14 @@ export function prettyErrorMessage(raw: unknown): string {
     return '가사 시간이 영상 길이를 초과했습니다. 타임라인을 조정해주세요.';
   }
 
+  // Whisper transcription errors
+  if (r.includes('whisper') && r.includes('not installed')) {
+    return 'Whisper가 설치되어 있지 않습니다. 자동 가사 추출 기능을 사용하려면 먼저 설치해주세요.';
+  }
+  if (r.includes('whisper') || r.includes('transcrib')) {
+    return '가사 자동 추출에 실패했습니다. 음원이 짧거나 음질이 낮을 수 있어요. 수동 입력을 사용해주세요.';
+  }
+
   // Default: first line, capped length.
   const firstLine = text.split(/\r?\n/)[0].slice(0, 240);
   return `렌더 중 오류가 발생했습니다: ${firstLine}`;

@@ -4,7 +4,14 @@ import { join, basename } from 'node:path';
 import { spawn } from 'node:child_process';
 import { ffprobePath } from '../render/binaries';
 import { analyzeAmplitude } from '../audio/analyze';
-import type { AudioMeta } from '../../shared/types';
+import {
+  WhisperNotInstalledError,
+  cancelActiveTranscription,
+  detectWhisperBinary,
+  transcribe,
+} from '../audio/transcribe';
+import { prettyErrorMessage } from '../../shared/errors';
+import type { AudioMeta, LanguageCode, LyricLine } from '../../shared/types';
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp'];
 const AUDIO_EXTS = ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'];
@@ -55,6 +62,55 @@ export function registerFileHandlers(
       return analyzeAmplitude(audioPath, startSec, durationSec);
     },
   );
+
+  ipcMain.handle('audio:whisperAvailable', () => {
+    const bin = detectWhisperBinary();
+    return bin ? { ok: true, kind: bin.kind } : { ok: false };
+  });
+
+  ipcMain.handle(
+    'audio:transcribe',
+    async (
+      _e,
+      args: {
+        audioPath: string;
+        startSec: number;
+        durationSec: number;
+        languageHint?: LanguageCode | 'auto';
+      },
+    ): Promise<{
+      ok: boolean;
+      lines?: LyricLine[];
+      language?: string;
+      error?: string;
+      notInstalled?: boolean;
+    }> => {
+      try {
+        const result = await transcribe(args);
+        return {
+          ok: true,
+          lines: result.lines.map((l) => ({ text: l.text, start: l.start, end: l.end })),
+          language: result.language,
+        };
+      } catch (err) {
+        if (err instanceof WhisperNotInstalledError) {
+          return {
+            ok: false,
+            notInstalled: true,
+            error:
+              'Whisper가 설치되어 있지 않습니다. 자동 가사 추출을 사용하려면 ' +
+              'OpenAI Whisper(`pip install openai-whisper`) 또는 whisper.cpp를 ' +
+              '시스템에 설치한 뒤 다시 시도해주세요.',
+          };
+        }
+        return { ok: false, error: prettyErrorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle('audio:cancelTranscribe', () => {
+    return cancelActiveTranscription();
+  });
 
   ipcMain.handle('files:readAsDataURL', async (_e, path: string) => {
     const data = await fs.readFile(path);
