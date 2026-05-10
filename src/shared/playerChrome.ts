@@ -33,6 +33,67 @@ export interface PlayerChromeOpts {
   artistName?: string;
   /** Template that owns this paint. Used for accent / text color hints. */
   template: Template;
+  /** Optional override for the track title / artist text color. Falls
+   *  back to template.lyricColor. */
+  metaColor?: string;
+  /** Optional CSS family list override for track title / artist. Falls
+   *  back to template.fontFamily. */
+  metaFontFamily?: string;
+  /** Multiplicative scale on the meta font size (0.75..1.5). 1 = no
+   *  change. Applied to both title and artist within the chrome card. */
+  metaScale?: number;
+  /** When true, the painter SKIPS drawing the progress bar — the export
+   *  pipeline draws it via ffmpeg drawbox for smooth per-frame motion.
+   *  Preview keeps painting it normally for live smoothness. */
+  skipProgress?: boolean;
+}
+
+/** Geometry of the progress bar within a chrome card. Used by the
+ *  export pipeline to draw a smoother bar via ffmpeg drawbox instead of
+ *  baking the bar position into per-keyframe PNGs. */
+export interface ProgressBarGeom {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Returns the progress-bar geometry for the given chrome style, or null
+ * when the style has no progress bar. Coordinates are canonical
+ * (1080×1920) and match the painters' internal layout exactly.
+ */
+export function progressBarGeom(
+  style: PlayerChromeStyle | null | undefined,
+): ProgressBarGeom | null {
+  switch (style) {
+    case 'apple-like': {
+      const cardX = 80;
+      const cardW = SCENE_W - cardX * 2;
+      const cardY = CHROME_CARD_TOP;
+      const cardH = CHROME_CARD_HEIGHT;
+      const trackY = cardY + cardH - 76;
+      return { x: cardX + 28, y: trackY, w: cardW - 56, h: 4 };
+    }
+    case 'spotify-like': {
+      const cardX = 60;
+      const cardW = SCENE_W - cardX * 2;
+      const cardY = CHROME_CARD_TOP;
+      const cardH = CHROME_CARD_HEIGHT;
+      const trackY = cardY + cardH - 60;
+      return { x: cardX + 24, y: trackY, w: cardW - 48, h: 3 };
+    }
+    case 'youtube-like': {
+      const cardX = 60;
+      const cardW = SCENE_W - cardX * 2;
+      const cardY = CHROME_CARD_TOP;
+      const cardH = CHROME_CARD_HEIGHT;
+      const trackY = cardY + cardH - 32;
+      return { x: cardX + 24, y: trackY, w: cardW - 48, h: 3 };
+    }
+    default:
+      return null;
+  }
 }
 
 /** Paint chrome chosen by `style`. No-op when style is unknown. */
@@ -96,12 +157,13 @@ function paintAppleLikePlayer(ctx: CanvasRenderingContext2D, o: PlayerChromeOpts
   // Track title / artist line.
   paintTrackLine(ctx, o, cardX + 28, cardY + 24, cardW - 56);
 
-  // Thin progress bar.
+  // Thin progress bar — skipped in export mode where ffmpeg drawbox
+  // paints a smoother per-frame bar instead.
   const trackY = cardY + cardH - 76;
-  paintProgressBar(ctx, cardX + 28, trackY, cardW - 56, 4, o.ratio, accent, fg, 2);
-
-  // Time labels.
-  paintTimeRow(ctx, cardX + 28, trackY + 16, cardW - 56, o);
+  if (!o.skipProgress) {
+    paintProgressBar(ctx, cardX + 28, trackY, cardW - 56, 4, o.ratio, accent, fg, 2);
+    paintTimeRow(ctx, cardX + 28, trackY + 16, cardW - 56, o);
+  }
 
   // Play / prev / next group, minimal Apple-feel iconography.
   const cy = cardY + cardH - 36;
@@ -140,10 +202,12 @@ function paintSpotifyLikePlayer(ctx: CanvasRenderingContext2D, o: PlayerChromeOp
   // Equalizer bars right of title — react to amplitude.
   paintEqualizerBars(ctx, cardX + cardW - 140, cardY + 28, 110, 56, accent, o.amplitude);
 
-  // Slim progress bar near bottom.
+  // Slim progress bar near bottom — export pipeline overrides via drawbox.
   const trackY = cardY + cardH - 60;
-  paintProgressBar(ctx, cardX + 24, trackY, cardW - 48, 3, o.ratio, accent, fg, 1.5);
-  paintTimeRow(ctx, cardX + 24, trackY + 14, cardW - 48, o);
+  if (!o.skipProgress) {
+    paintProgressBar(ctx, cardX + 24, trackY, cardW - 48, 3, o.ratio, accent, fg, 1.5);
+    paintTimeRow(ctx, cardX + 24, trackY + 14, cardW - 48, o);
+  }
 
   // Centered play icon — bigger, rounded square.
   const cy = cardY + cardH - 36;
@@ -188,10 +252,13 @@ function paintYoutubeLikePlayer(ctx: CanvasRenderingContext2D, o: PlayerChromeOp
   ctx.fill();
   ctx.restore();
 
-  // Progress bar at the very bottom of the card.
+  // Progress bar at the very bottom of the card — export pipeline
+  // overrides via drawbox for smooth motion.
   const trackY = cardY + cardH - 32;
-  paintProgressBar(ctx, cardX + 24, trackY, cardW - 48, 3, o.ratio, accent, fg, 1.5);
-  paintTimeRow(ctx, cardX + 24, trackY + 14, cardW - 48, o);
+  if (!o.skipProgress) {
+    paintProgressBar(ctx, cardX + 24, trackY, cardW - 48, 3, o.ratio, accent, fg, 1.5);
+    paintTimeRow(ctx, cardX + 24, trackY + 14, cardW - 48, o);
+  }
 }
 
 /* ----------------------------------------- shared sub-painters */
@@ -203,16 +270,25 @@ function paintTrackLine(
   y: number,
   maxW: number,
 ): void {
+  // Phase 5-4: meta overrides apply here too so the player chrome's
+  // track line matches the user's meta typography pick.
+  const safeScale = Math.max(0.75, Math.min(1.5, o.metaScale ?? 1));
+  const baseColor = o.metaColor ?? o.template.lyricColor;
+  const fontFamily = o.metaFontFamily ?? o.template.fontFamily;
+  const titleSize = Math.round(28 * safeScale);
+  const artistSize = Math.round(18 * safeScale);
   ctx.save();
   ctx.textBaseline = 'top';
-  ctx.fillStyle = o.template.lyricColor;
-  ctx.font = `700 28px ${o.template.fontFamily}`;
+  ctx.fillStyle = baseColor;
+  ctx.font = `700 ${titleSize}px ${fontFamily}`;
   const title = (o.trackTitle ?? '').trim() || 'Now Playing';
   ctx.fillText(ellipsize(ctx, title, maxW), x, y);
-  ctx.font = `500 18px ${o.template.fontFamily}`;
-  ctx.fillStyle = withAlphaChrome(o.template.lyricColor, 0.65);
+  ctx.font = `500 ${artistSize}px ${fontFamily}`;
+  ctx.fillStyle = withAlphaChrome(baseColor, 0.65);
   const artist = (o.artistName ?? '').trim();
-  if (artist) ctx.fillText(ellipsize(ctx, artist, maxW), x, y + 36);
+  if (artist) {
+    ctx.fillText(ellipsize(ctx, artist, maxW), x, y + Math.round(36 * safeScale));
+  }
   ctx.restore();
 }
 

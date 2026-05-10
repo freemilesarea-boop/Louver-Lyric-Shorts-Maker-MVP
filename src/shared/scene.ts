@@ -96,6 +96,9 @@ export function resolveFontSpec(
   /** User pick from FontSelector. Wins over template's fontStack/fontFamily.
    *  Null/undefined → fall back to the template's declared family chain. */
   fontKeyOverride?: FontKey | null,
+  /** Multiplicative scale applied to both en + ko sizes (0.75..1.5).
+   *  1 = template default. */
+  fontScale: number = 1,
 ): FontSpec {
   // The single source of truth for the font feature: when the user picks
   // (or we resolve a per-language default), `fontFamilyFor()` builds a
@@ -109,10 +112,11 @@ export function resolveFontSpec(
         const langFallback = LANGUAGE_FONT_STACK[lang];
         return `${base}, ${langFallback}`;
       })();
+  const safeScale = Math.max(0.75, Math.min(1.5, fontScale));
   return {
     family,
-    sizeEN: t.fontSize,
-    sizeKO: Math.round(t.fontSize * 0.78),
+    sizeEN: Math.round(t.fontSize * safeScale),
+    sizeKO: Math.round(t.fontSize * 0.78 * safeScale),
     weight: t.fontWeight,
     // Tighter tracking for huge display type, looser for compact text.
     letterSpacing: t.fontSize >= 60 ? -1 : 0,
@@ -142,6 +146,63 @@ export function resolveShadow(t: Template): ShadowSpec {
     case 'soft':
     default:
       return { offsetX: 2, offsetY: 3, blur: 6, color: 'rgba(0,0,0,0.55)' };
+  }
+}
+
+/**
+ * Apply a user-picked lyric visual effect on top of the template's base
+ * shadow. The result is consumed by paintTextLines / paintKaraokeText and
+ * may further be widened by reactive/animation glow in paintLyric.
+ *
+ * Effects are tuned to be obvious enough to register at glance but not
+ * loud enough to crush legibility:
+ *  - none: explicitly disable the shadow (override even the template's)
+ *  - soft_shadow: keep the template default
+ *  - neon: blur in the primary color (sign-tube look)
+ *  - glow: bigger softer blur in primary
+ *  - outline: stroke under fill, no blur
+ *  - subtle_blur_glow: low-alpha secondary tint, mild blur
+ */
+function applyLyricEffect(
+  base: ShadowSpec,
+  effect: import('./types').LyricEffect,
+  colors: { primary: string; secondary: string },
+): ShadowSpec {
+  switch (effect) {
+    case 'none':
+      return { offsetX: 0, offsetY: 0, blur: 0, color: 'rgba(0,0,0,0)' };
+    case 'neon':
+      return {
+        offsetX: 0,
+        offsetY: 0,
+        blur: 26,
+        color: withAlpha(colors.primary, 0.85),
+      };
+    case 'glow':
+      return {
+        offsetX: 0,
+        offsetY: 0,
+        blur: 38,
+        color: withAlpha(colors.primary, 0.65),
+      };
+    case 'outline':
+      return {
+        offsetX: 0,
+        offsetY: 0,
+        blur: 0,
+        color: 'rgba(0,0,0,0.85)',
+        outline: true,
+      };
+    case 'subtle_blur_glow':
+      return {
+        offsetX: 0,
+        offsetY: 0,
+        blur: 14,
+        color: withAlpha(colors.secondary, 0.45),
+      };
+    case 'soft_shadow':
+    default:
+      return base;
   }
 }
 
@@ -330,6 +391,12 @@ export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): 
   if (o.template.playerChrome) {
     const r = o.reactive;
     const liveAmp = r ? Math.max(r.pulse, r.waveformBoost) : null;
+    const metaFontKeyOverride = (o.styleOverrides?.metaFontKey ?? null) as
+      | FontKey
+      | null;
+    const metaFamily = metaFontKeyOverride
+      ? resolveFontSpec(o.template, o.language, metaFontKeyOverride, 1).family
+      : undefined;
     paintPlayerChrome(ctx, o.template.playerChrome, {
       ratio: Math.max(0, Math.min(1, o.timeRatio ?? 0)),
       durationSec: o.durationSec ?? 0,
@@ -337,6 +404,14 @@ export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): 
       trackTitle: o.trackTitle,
       artistName: o.artistName,
       template: o.template,
+      metaColor: o.styleOverrides?.metaColor,
+      metaFontFamily: metaFamily,
+      metaScale: o.styleOverrides?.metaFontScale,
+      // Export pipeline draws the progress bar via ffmpeg drawbox for
+      // smooth per-frame motion (vs steppy keyframe-rate updates baked
+      // into a PNG). Preview keeps painting it normally for the live
+      // requestAnimationFrame loop.
+      skipProgress: o.exportMode === true,
     });
   }
 
@@ -682,7 +757,12 @@ function paintLyric(
   if (!o.lyric) return;
   const t = o.template;
   const colors = resolveColors(t, o.highlightSub, o.styleOverrides ?? null);
-  const font = resolveFontSpec(t, o.language, o.fontKey ?? null);
+  const font = resolveFontSpec(
+    t,
+    o.language,
+    o.fontKey ?? null,
+    o.styleOverrides?.lyricFontScale ?? 1,
+  );
   const baseShadow = resolveShadow(t);
   const pos = resolveLyricPositioning(t, o.lyricPositionOverride ?? null);
   const anim = o.animation ?? REST_STATE;
@@ -694,17 +774,23 @@ function paintLyric(
   // Combine animation-driven glow with audio-reactive glow (additive, capped).
   const totalGlow = clamp01(anim.glow + reactive.glow);
 
-  // Glow strengthens the lyric's drop shadow with the sub-color, additive.
+  // Layer order: template baseShadow → lyricEffect override (if user picked
+  // one) → reactive/animation glow widens blur on top. Effect's color
+  // persists through reactive glow so the chosen vibe stays consistent.
+  const effect = o.styleOverrides?.lyricEffect ?? 'soft_shadow';
+  const effectShadow = applyLyricEffect(baseShadow, effect, {
+    primary: colors.en,
+    secondary: colors.ko,
+  });
   const shadow =
-    totalGlow > 0
+    totalGlow > 0 && !effectShadow.outline
       ? {
-          ...baseShadow,
-          color: withAlpha(t.glowColor ?? t.lyricSubColor, 0.55 + totalGlow * 0.45),
-          blur: Math.max(baseShadow.blur, 18 + totalGlow * 40),
+          ...effectShadow,
+          blur: Math.max(effectShadow.blur, 18 + totalGlow * 40),
           offsetX: 0,
           offsetY: 0,
         }
-      : baseShadow;
+      : effectShadow;
 
   ctx.save();
   ctx.globalAlpha *= clamp01(anim.opacity);
@@ -808,6 +894,20 @@ function paintMeta(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
   ctx.textBaseline = 'middle';
   const cx = SCENE_W / 2;
   const yTitle = Math.round(SCENE_H * 0.78);
+  // Phase 5-4: meta has its own font / color / scale overrides so users
+  // can tune track-info typography independently of lyric typography.
+  // Falls back to the lyric font key when metaFontKey is unset.
+  const metaScale = o.styleOverrides?.metaFontScale ?? 1;
+  const metaSafeScale = Math.max(0.75, Math.min(1.5, metaScale));
+  const metaFontKey = (o.styleOverrides?.metaFontKey ?? o.fontKey ?? null) as
+    | FontKey
+    | null;
+  const metaFamily = resolveFontSpec(t, o.language, metaFontKey, 1).family;
+  const titleColor = o.styleOverrides?.metaColor ?? t.lyricColor;
+  const artistColor =
+    o.styleOverrides?.metaColor != null
+      ? withAlpha(o.styleOverrides.metaColor, 0.78)
+      : withAlpha(t.lyricColor, 0.7);
 
   if (o.trackTitle && o.trackTitle.trim()) {
     paintTextLines(ctx, {
@@ -815,10 +915,10 @@ function paintMeta(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
       x: cx,
       y: yTitle,
       maxWidth: SCENE_W * 0.9,
-      fontSize: 38,
+      fontSize: Math.round(38 * metaSafeScale),
       fontWeight: 700,
-      family: resolveFontSpec(t, o.language, o.fontKey ?? null).family,
-      color: t.lyricColor,
+      family: metaFamily,
+      color: titleColor,
       shadow: resolveShadow(t),
     });
   }
@@ -826,12 +926,12 @@ function paintMeta(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
     paintTextLines(ctx, {
       text: o.artistName,
       x: cx,
-      y: yTitle + 50,
+      y: yTitle + Math.round(50 * metaSafeScale),
       maxWidth: SCENE_W * 0.9,
-      fontSize: 28,
+      fontSize: Math.round(28 * metaSafeScale),
       fontWeight: 500,
-      family: resolveFontSpec(t, o.language, o.fontKey ?? null).family,
-      color: withAlpha(t.lyricColor, 0.7),
+      family: metaFamily,
+      color: artistColor,
       shadow: resolveShadow(t),
     });
   }

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ffmpegPath } from './binaries';
 import { buildFilterGraph, type OverlayTiming } from './filters';
+import { progressBarGeom } from '../../shared/playerChrome';
 import type { RenderRequest, RenderTimings } from '../../shared/types';
 
 const TARGET_W = 1080;
@@ -91,6 +92,11 @@ export async function runRender(
       motionPreset,
       backgroundInputIndex: hasBackground ? 2 : null,
       mainScale: req.styleOverrides?.mainScale ?? 1,
+      // When the template has player chrome, hand the progress-bar
+      // geometry to filters.ts so it can paint a smooth per-frame bar
+      // via drawbox + t/dur expression. No-op for templates without
+      // a player chrome.
+      playerProgressGeom: progressBarGeom(req.template.playerChrome ?? null),
     });
     const filterScriptPath = join(tempDir, 'filter.txt');
     await fs.writeFile(filterScriptPath, filter, 'utf8');

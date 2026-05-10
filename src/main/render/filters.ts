@@ -1,5 +1,6 @@
 import type { MotionPreset, Template } from '../../shared/types';
 import { ffmpegMotionExpressions, isStaticMotion } from '../../shared/motion';
+import type { ProgressBarGeom } from '../../shared/playerChrome';
 
 export interface OverlayTiming {
   /** Index into ffmpeg input list (0 = image, 1 = audio, 2..N = overlays). */
@@ -24,6 +25,11 @@ export interface FilterArgs {
   /** User scale on the foreground card (0.6..1.2). 1 = template default
    *  (matches scene.ts resolvePhotoBox 92%×74%). */
   mainScale?: number;
+  /** Geometry of the player-chrome progress bar (when the template has
+   *  one). When provided, ffmpeg drawbox paints a smooth per-frame bar
+   *  here using a t/dur expression; the chrome PNG painter skips its
+   *  own progress in export mode to avoid double-drawing. */
+  playerProgressGeom?: ProgressBarGeom | null;
 }
 
 /**
@@ -160,6 +166,38 @@ export function buildFilterGraph(a: FilterArgs): string {
         `color=${ffmpegColor(t.lyricColor, 0.95)}:t=fill[ic3]`,
     );
     chainIn = 'ic3';
+  }
+
+  // --- 6.5) Player-chrome progress bar — drawn here at video fps so the
+  //          bar moves smoothly. The PNG-baked chrome painter skips its
+  //          own progress bar in export mode (skipProgress=true), leaving
+  //          the geometry below as the only on-screen progress.
+  if (t.playerChrome && a.playerProgressGeom) {
+    const g = a.playerProgressGeom;
+    const accent = t.lyricSubColor;
+    const fg = t.lyricColor;
+    // Track + filled portion (uses `t/dur` expression so width updates
+    // every frame without any per-keyframe PNG cost).
+    lines.push(
+      `[${chainIn}]drawbox=x=${g.x}:y=${g.y}:w=${g.w}:h=${g.h}:` +
+        `color=${ffmpegColor(fg, 0.18)}:t=fill[pc_track]`,
+    );
+    lines.push(
+      `[pc_track]drawbox=x=${g.x}:y=${g.y}:` +
+        `w='min(${g.w},${g.w}*t/${a.durationSec})':h=${g.h}:` +
+        `color=${ffmpegColor(accent, 0.95)}:t=fill:replace=1[pc_bar]`,
+    );
+    // Playhead dot — small circle approximated as a square that follows
+    // the bar's filled-end position. Width 2× bar height for visibility.
+    const dotSize = Math.max(8, g.h * 3);
+    const dotY = g.y + Math.round(g.h / 2 - dotSize / 2);
+    lines.push(
+      `[pc_bar]drawbox=` +
+        `x='${g.x}+${g.w}*t/${a.durationSec}-${dotSize / 2}':` +
+        `y=${dotY}:w=${dotSize}:h=${dotSize}:` +
+        `color=${ffmpegColor(fg, 1)}:t=fill:replace=1[pc_dot]`,
+    );
+    chainIn = 'pc_dot';
   }
 
   // --- 7) Faux waveform ---

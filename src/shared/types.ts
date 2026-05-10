@@ -153,17 +153,46 @@ export interface Template {
   playerChrome?: 'apple-like' | 'spotify-like' | 'youtube-like';
 }
 
+/** Optional visual effect added to lyric text on top of the template's
+ *  base shadow + the animation/reactive glow. Each preset is tuned so a
+ *  user can pick a vibe ("네온사인 / 부드러운 그림자") without breaking
+ *  the existing animation+reactive glow stack. */
+export type LyricEffect =
+  | 'none'
+  | 'soft_shadow'
+  | 'neon'
+  | 'glow'
+  | 'outline'
+  | 'subtle_blur_glow';
+
+export const LYRIC_EFFECTS: LyricEffect[] = [
+  'none',
+  'soft_shadow',
+  'neon',
+  'glow',
+  'outline',
+  'subtle_blur_glow',
+];
+
+export const LYRIC_EFFECT_LABEL: Record<LyricEffect, string> = {
+  none: '없음',
+  soft_shadow: '부드러운 그림자',
+  neon: '네온사인',
+  glow: '글로우',
+  outline: '외곽선',
+  subtle_blur_glow: '몽환 글로우',
+};
+
 /**
  * User-side style overrides. All fields optional — null/undefined falls
  * back to the template's value. Stored on the project + persisted in
  * custom presets so a saved style ships with the user's tweaks intact.
  *
- * The brief calls for a richer set (border thickness, radius, shadow,
- * position, alignments, glow color, panel opacity, etc.) but Phase 5-3
- * ships only the four highest-impact controls so the architecture is in
- * place without a UI explosion. Adding more fields later is purely a
- * matter of extending this type + the editor UI; the threading code in
- * scene.ts / overlays.ts / customPresets.ts already covers the plumbing.
+ * Phase 5-3 shipped the four highest-impact controls (border, lyric
+ * colors, scale). Phase 5-4 adds: lyric visual effect, lyric font
+ * scale, and a parallel set of meta (track title / artist) overrides.
+ * Adding more knobs later is purely a matter of extending this type +
+ * the editor UI; the threading code already covers the plumbing.
  */
 export interface StyleOverrides {
   /** Solid color for the photo card border. Falls back to template.frameColor. */
@@ -175,6 +204,20 @@ export interface StyleOverrides {
   lyricSecondaryColor?: string;
   /** Multiplicative scale on the main photo box (0.6..1.2). 1 = no change. */
   mainScale?: number;
+  /** Visual effect added to lyric text. Layered on top of the template's
+   *  base shadow + active animation/reactive glow. */
+  lyricEffect?: LyricEffect;
+  /** Multiplicative scale on the lyric font size (0.75..1.5). 1 = no
+   *  change. Applied to both English and Korean lyric lines. */
+  lyricFontScale?: number;
+  /** Font key for track title / artist text. When unset, meta uses the
+   *  same font as lyrics. */
+  metaFontKey?: string;
+  /** Override for both track title and artist text color. */
+  metaColor?: string;
+  /** Multiplicative scale on the meta font size (0.75..1.5). 1 = no
+   *  change. Applied to both title and artist. */
+  metaFontScale?: number;
 }
 
 /** Identity overrides — every field unset / passthrough. */
