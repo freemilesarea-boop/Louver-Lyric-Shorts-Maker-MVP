@@ -14,10 +14,19 @@ import type {
 /**
  * Custom preset persistence.
  *
- * Storage: `<app userData>/custom-presets.json`. Atomic write via temp +
+ * Storage: `<userData>/custom-presets.json`. Atomic write via temp +
  * rename so a crash mid-save can't corrupt the file. Reads are
  * fault-tolerant — if the file is missing, empty, or malformed we log and
  * return an empty list rather than crash.
+ *
+ * Path resolution (resolved fresh on every call so test env-var overrides
+ * applied after this module loads still take effect):
+ *   1. `process.env.LSM_USER_DATA_DIR` — test seam. Used by rc-qa.ts so
+ *      it can run the round-trip without an Electron `app` instance and
+ *      without spawning a child process to mock 'electron'.
+ *   2. `app.getPath('userData')` — production. Electron resolves to
+ *      `~/Library/Application Support/<app>` (macOS), `%APPDATA%\<app>`
+ *      (Windows), or `~/.config/<app>` (Linux).
  */
 
 const FILE_NAME = 'custom-presets.json';
@@ -30,10 +39,16 @@ interface StoredFile {
 
 const EMPTY: StoredFile = { version: FILE_VERSION, presets: [] };
 
+function userDataDir(): string {
+  // Env-var seam first — production never sets this. Read on every call
+  // so test code that sets the env after module import still works.
+  const fromEnv = process.env.LSM_USER_DATA_DIR;
+  if (fromEnv && fromEnv.length > 0) return fromEnv;
+  return app.getPath('userData');
+}
+
 function filePath(): string {
-  // app.getPath('userData') is OS-correct (e.g. ~/Library/Application Support/<app>
-  // on macOS, %APPDATA%\<app> on Windows).
-  return join(app.getPath('userData'), FILE_NAME);
+  return join(userDataDir(), FILE_NAME);
 }
 
 export async function listPresets(): Promise<CustomPreset[]> {
