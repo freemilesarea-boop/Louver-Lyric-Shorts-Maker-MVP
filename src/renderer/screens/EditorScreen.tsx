@@ -188,7 +188,7 @@ export default function EditorScreen(): JSX.Element {
       {/* Left column: live preview */}
       <div className="flex min-h-0 flex-col items-center justify-center rounded-2xl border border-white/5 bg-ink-900 p-4">
         <div className="mb-2 text-xs uppercase tracking-widest text-white/40">
-          미리보기 · 1080×1920 (canvas)
+          미리보기 · 1080×1920
         </div>
         <div className="flex min-h-0 w-full flex-1 items-center justify-center">
           <LivePreview
@@ -216,25 +216,25 @@ export default function EditorScreen(): JSX.Element {
           <SafeZoneToggle />
         </div>
         <div className="mt-2 text-[10px] text-white/40">
-          이 미리보기는 export 와 동일한 scene renderer를 사용합니다.
+          미리보기와 출력 영상은 동일한 화면을 사용합니다.
         </div>
       </div>
 
       {/* Right column: controls */}
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1">
-        <Section title="샘플 프리셋">
+        <Section title="추천 스타일">
           <SamplePresetPicker />
         </Section>
 
-        <Section title="Style Controls">
+        <Section title="스타일 설정">
           <div className="space-y-4">
-            <SubControl label="Template">
+            <SubControl label="디자인 템플릿">
               <TemplateGallery />
             </SubControl>
-            <SubControl label="Photo Motion">
+            <SubControl label="사진 움직임">
               <MotionSelector />
             </SubControl>
-            <SubControl label="Lyric Animation">
+            <SubControl label="가사 애니메이션">
               <div className="space-y-2">
                 <AnimationSelector />
                 <label className="flex cursor-pointer items-center gap-2 text-[11px] text-white/70">
@@ -243,17 +243,17 @@ export default function EditorScreen(): JSX.Element {
                     checked={state.karaokeEnabled}
                     onChange={(e) => state.setKaraokeEnabled(e.target.checked)}
                   />
-                  Karaoke Sync (단어 단위 하이라이트, 기본 OFF)
+                  단어별 하이라이트 (노래방 효과, 기본 꺼짐)
                 </label>
               </div>
             </SubControl>
-            <SubControl label="Audio Reactive">
+            <SubControl label="음악 반응 효과">
               <ReactiveSelector />
             </SubControl>
-            <SubControl label="Cinematic FX">
+            <SubControl label="감성 필터">
               <CinematicFxSelector />
             </SubControl>
-            <SubControl label="Font">
+            <SubControl label="글씨체">
               <FontSelector />
             </SubControl>
           </div>
@@ -292,42 +292,42 @@ export default function EditorScreen(): JSX.Element {
           </div>
         </Section>
 
-        <Section title="줄별 타임라인">
+        <Section title="줄별 타이밍">
           <LyricTimeline audioRef={audioRef} />
         </Section>
 
-        <Section title="내 프리셋">
+        <Section title="내 스타일 저장">
           <CustomPresetPanel />
         </Section>
 
-        <Section title="배치 출력">
+        <Section title="여러 스타일 한 번에 만들기">
           <div className="space-y-1">
             <div className="text-[11px] text-white/50">
-              한 번에 여러 스타일로 자동 생성 — 단일 영상 출력은 아래 버튼에서.
+              한 번 클릭으로 여러 스타일을 자동 생성합니다. 단일 영상은 아래 "영상 만들기" 버튼.
             </div>
             <BatchPicker />
           </div>
         </Section>
 
-        <Section title="Export Preset">
+        <Section title="출력 용도">
           <ExportPresetSelector />
         </Section>
 
-        <Section title="Watermark">
+        <Section title="브랜드 표시">
           <WatermarkSelector />
         </Section>
 
-        <Section title="메타">
+        <Section title="곡 정보">
           <div className="grid grid-cols-2 gap-2">
             <input
               className="rounded-md border border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-white/30 focus:border-white/40 focus:outline-none"
-              placeholder="곡 제목 (선택)"
+              placeholder="곡 제목 (선택사항)"
               value={state.trackTitle}
               onChange={(e) => state.setTrackTitle(e.target.value)}
             />
             <input
               className="rounded-md border border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-white/30 focus:border-white/40 focus:outline-none"
-              placeholder="아티스트 (선택)"
+              placeholder="아티스트 (선택사항)"
               value={state.artistName}
               onChange={(e) => state.setArtistName(e.target.value)}
             />
@@ -352,7 +352,7 @@ export default function EditorScreen(): JSX.Element {
             disabled={!state.imagePath || !state.audioPath || state.isRendering}
             className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-ink-950 hover:bg-accent-soft disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
           >
-            영상 출력 →
+            영상 만들기 →
           </button>
         </div>
       </div>

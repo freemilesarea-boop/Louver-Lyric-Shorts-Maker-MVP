@@ -196,10 +196,10 @@ export const REACTIVE_MODES: ReactiveMode[] = [
 ];
 
 export const REACTIVE_LABEL: Record<ReactiveMode, string> = {
-  none: 'None',
-  soft_pulse: 'Soft Pulse',
-  lyric_glow: 'Lyric Glow',
-  waveform_boost: 'Waveform Boost',
-  cinematic_bloom: 'Cinematic Bloom',
-  neon_pulse: 'Neon Pulse',
+  none: '없음',
+  soft_pulse: '부드러운 박동',
+  lyric_glow: '가사 글로우',
+  waveform_boost: '웨이브폼 강조',
+  cinematic_bloom: '시네마틱 빛 번짐',
+  neon_pulse: '네온 박동',
 };

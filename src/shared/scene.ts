@@ -15,6 +15,7 @@ import { REST_REACTIVE, type ReactiveState } from './audioReactive';
 import { type FxConfig, paintCinematicFx } from './cinematicFx';
 import { paintKaraokeText, splitTokens } from './karaoke';
 import { paintWatermark, type WatermarkConfig } from './watermark';
+import { paintPlayerChrome } from './playerChrome';
 
 /** Canonical export resolution. All layout math is computed against this size
  * and scaled for the live preview by passing width/height to the same code. */
@@ -136,11 +137,13 @@ export function resolveShadow(t: Template): ShadowSpec {
 }
 
 export function resolvePhotoBox(_t: Template): PhotoBox {
-  // Canonical centered card; templates can shift this in future versions.
-  const width = Math.round(SCENE_W * 0.86);
-  const height = Math.round(SCENE_H * 0.62);
+  // Photo dominates the frame (was 86%×62% — left big cardBg margins that
+  // washed out the upload). 92%×74% keeps lyric room at bottom while
+  // letting the user's image be the visual anchor.
+  const width = Math.round(SCENE_W * 0.92);
+  const height = Math.round(SCENE_H * 0.74);
   const x = (SCENE_W - width) / 2;
-  const y = (SCENE_H - height) / 2 - 80;
+  const y = (SCENE_H - height) / 2 - 100;
   return { x, y, width, height };
 }
 
@@ -249,6 +252,10 @@ export interface RenderSceneOpts {
    *  watermark overlay PNG carries this; per-line keyframe PNGs leave it
    *  null so the mark doesn't flicker between lyric chunks. */
   watermark?: WatermarkConfig | null;
+  /** Total clip duration in seconds. Used by the player-style chrome
+   *  painter to render the time row (current / total). Optional —
+   *  templates without playerChrome don't need this. */
+  durationSec?: number;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
@@ -288,6 +295,24 @@ export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): 
   } else {
     // Export adds only static decorations; ffmpeg drawbox handles animated chrome.
     paintDecorations(ctx, o);
+  }
+
+  // 6b) Player-style chrome (apple/spotify/youtube-like). Painted in BOTH
+  //     modes so the music-app feel ships in the exported MP4, not just
+  //     the preview. The card is mostly static (track line + progress bar
+  //     position is amplitude-independent at the keyframe sample), so it
+  //     bakes cleanly into the same per-line PNG overlays.
+  if (o.template.playerChrome) {
+    const r = o.reactive;
+    const liveAmp = r ? Math.max(r.pulse, r.waveformBoost) : null;
+    paintPlayerChrome(ctx, o.template.playerChrome, {
+      ratio: Math.max(0, Math.min(1, o.timeRatio ?? 0)),
+      durationSec: o.durationSec ?? 0,
+      amplitude: liveAmp,
+      trackTitle: o.trackTitle,
+      artistName: o.artistName,
+      template: o.template,
+    });
   }
 
   // 7) Audio-reactive layers — render in BOTH modes so export PNG keyframes
@@ -394,9 +419,16 @@ function paintChrome(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
     paintPlayIcon(ctx, t.playIconStyle ?? 'triangle', t.lyricColor);
   }
 
-  // Faux waveform.
+  // Reactive waveform — uses live amplitude when the curve is wired up.
   if (t.showWaveform) {
-    paintWaveform(ctx, t.lyricColor, ratio);
+    // We don't have the raw amplitude curve here (RenderSceneOpts doesn't
+    // carry it directly), but the reactive state derived from it does. For
+    // most modes, `pulse` is a faithful 0..1 echo of the smoothed amplitude
+    // at this moment. `waveformBoost` is also amplitude-derived (for the
+    // matching modes only). Combine them so any reactive mode contributes.
+    const r = o.reactive;
+    const liveAmp = r ? Math.max(r.pulse, r.waveformBoost) : null;
+    paintWaveform(ctx, t.lyricColor, ratio, liveAmp ?? null);
   }
 
   paintDecorations(ctx, o);
@@ -474,13 +506,15 @@ function paintFrame(
 
   switch (frame.style) {
     case 'polaroid': {
-      const pad = Math.max(28, frame.padding || 28);
-      const bottomPad = pad * 4;
-      // Drop shadow under the polaroid.
+      // Smaller pad than v1 so the polaroid border is a frame around the
+      // photo, not a band that dwarfs it. Bottom band still longer than
+      // top/sides for the polaroid look.
+      const pad = Math.max(16, frame.padding || 16);
+      const bottomPad = Math.round(pad * 2.5);
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,0.4)';
-      ctx.shadowBlur = 30;
-      ctx.shadowOffsetY = 14;
+      ctx.shadowBlur = 24;
+      ctx.shadowOffsetY = 10;
       ctx.fillStyle = frame.color;
       ctx.fillRect(box.x - pad, box.y - pad, box.width + pad * 2, box.height + pad + bottomPad);
       ctx.restore();
@@ -761,19 +795,47 @@ function paintPlayIcon(
   ctx.restore();
 }
 
-function paintWaveform(ctx: CanvasRenderingContext2D, color: string, ratio: number): void {
+/**
+ * Reactive waveform painter.
+ *
+ * `amplitude` (0..1) is the current loudness sampled from the AmplitudeCurve
+ * at clip-relative time. When non-null the bars actually breathe with the
+ * music; the per-bar sin term still provides shape variation between bars
+ * so they don't all bounce identically. When null we fall back to the v1
+ * pure-sine animation so templates without an amplitude curve still show
+ * something animated (used by demo-pack and tests that pre-date reactivity).
+ *
+ * Note: export-time waveform is rendered by ffmpeg drawbox in the filter
+ * graph (see src/main/render/filters.ts §7). That path is still synthetic
+ * sine — wiring the amplitude curve into ffmpeg expressions per-bar is a
+ * follow-up. The PREVIEW reactivity here is the immediate-feedback fix the
+ * beta tester noticed.
+ */
+function paintWaveform(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  ratio: number,
+  amplitude: number | null,
+): void {
   const bars = 32;
   const margin = 100;
   const baseY = Math.round(SCENE_H * 0.84);
   const region = SCENE_W - margin * 2;
   const slot = Math.floor(region / bars);
+  // Map raw amplitude (0..1) into a reactive boost applied on top of a
+  // baseline so quiet sections still show some shape.
+  const amp = amplitude == null ? null : Math.max(0, Math.min(1, amplitude));
+  const reactiveGain = amp == null ? 0 : amp * 60; // up to 60px additional bar height
   ctx.save();
   for (let i = 0; i < bars; i++) {
     const seed = (i * 37) % 100;
     const phase = ratio * Math.PI * 4 + i * 0.7;
-    const h = Math.max(12, Math.min(80, (seed / 100) * 40 + 30 + 20 * Math.sin(phase)));
+    const baseline = (seed / 100) * 24 + 18; // 18..42 baseline
+    const sinShape = (0.5 + 0.5 * Math.sin(phase)) * 14;
+    const reactive = (0.5 + 0.5 * Math.sin(phase * 1.3)) * reactiveGain;
+    const h = Math.max(10, Math.min(110, baseline + sinShape + reactive));
     const x = margin + i * slot;
-    ctx.fillStyle = withAlpha(color, 0.85);
+    ctx.fillStyle = withAlpha(color, amp != null && amp > 0.6 ? 0.95 : 0.8);
     ctx.fillRect(x, baseY - h / 2, Math.max(2, slot - 4), h);
   }
   ctx.restore();

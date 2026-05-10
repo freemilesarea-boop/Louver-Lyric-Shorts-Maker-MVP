@@ -72,7 +72,7 @@ export default function StartScreen(): JSX.Element {
               audioPath ? (
                 <div className="flex h-full items-center justify-center bg-ink-800">
                   <div className="text-center">
-                    <div className="text-xs text-white/50">DURATION</div>
+                    <div className="text-xs text-white/50">길이</div>
                     <div className="mt-1 font-mono text-2xl">
                       {formatDur(audioDuration)}
                     </div>

@@ -101,6 +101,27 @@ jobs:
           # are unsigned and intended for internal testing.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      - name: Ad-hoc codesign macOS app (no Apple Developer ID required)
+        # macOS Gatekeeper rejects an unsigned .app with "손상되었기
+        # 때문에 열 수 없습니다" because the package has no signature
+        # AND the quarantine xattr is set when the user downloads it.
+        # An ad-hoc signature (`-s -`) is enough for Gatekeeper to fall
+        # through to the "unidentified developer" prompt, which the user
+        # can clear via right-click → Open. This isn't notarization —
+        # users on macOS 15+ may still need to allow the app in Settings
+        # → Privacy & Security — but it's a strict improvement over a
+        # totally unsigned .app, and it costs nothing.
+        if: matrix.os == 'macos-latest'
+        run: |
+          set -e
+          shopt -s nullglob
+          for app in release/mac*/*.app release/*.app; do
+            if [ -d "$app" ]; then
+              echo "Ad-hoc signing: $app"
+              codesign --force --deep --sign - "$app" || true
+            fi
+          done
+
       - name: Verify packaged ffmpeg/ffprobe binaries
         # Confirms the host-OS binary actually landed in the package.
         # If a future change accidentally swaps the unpack rule, this

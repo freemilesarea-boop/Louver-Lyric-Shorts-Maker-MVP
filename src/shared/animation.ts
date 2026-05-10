@@ -220,11 +220,11 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
 ];
 
 export const ANIMATION_LABEL: Record<AnimationPreset, string> = {
-  none: 'None (static)',
-  fade: 'Fade',
-  slide_up: 'Slide Up',
-  slide_down: 'Slide Down',
-  blur_fade: 'Blur Fade',
-  soft_pop: 'Soft Pop',
-  karaoke_glow: 'Karaoke Glow',
+  none: '없음 (정지)',
+  fade: '서서히 나타남',
+  slide_up: '아래에서 위로',
+  slide_down: '위에서 아래로',
+  blur_fade: '흐릿하게 페이드',
+  soft_pop: '부드러운 팝',
+  karaoke_glow: '노래방 글로우',
 };

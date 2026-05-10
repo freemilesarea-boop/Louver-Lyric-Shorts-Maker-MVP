@@ -111,10 +111,10 @@ export default function TranscribeButton(): JSX.Element {
           ].join(' ')}
           title={
             available === false
-              ? 'Whisper가 설치되어 있지 않습니다.'
+              ? '자동 가사 추출 엔진이 포함되지 않은 빌드입니다. 가사를 직접 입력해주세요.'
               : !audioPath
                 ? '오디오를 먼저 업로드해주세요.'
-                : '현재 선택된 오디오 구간에서 가사 자동 추출'
+                : '선택된 오디오 구간에서 가사를 자동으로 추출합니다'
           }
         >
           <span>✨</span> AI 가사 추출
@@ -132,9 +132,9 @@ export default function TranscribeButton(): JSX.Element {
       </div>
       {available === false && (
         <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-yellow-200">
-          자동 가사 추출은 아직 사용할 수 없습니다. 기능을 활성화하려면
-          시스템에 Whisper를 설치해주세요 — 예: <code>pip install openai-whisper</code>
-          {' '}또는 <code>brew install whisper-cpp</code>.
+          이 빌드에는 자동 가사 추출 엔진이 포함되어 있지 않아요. 가사는
+          아래 입력란에 직접 입력해주세요. (개발자: <code>resources/whisper/</code>
+          {' '}README 참고)
         </div>
       )}
       {error && (

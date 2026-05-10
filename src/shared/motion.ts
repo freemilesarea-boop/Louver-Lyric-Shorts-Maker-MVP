@@ -183,12 +183,23 @@ export const MOTION_PRESETS: MotionPreset[] = [
 ];
 
 export const MOTION_LABEL: Record<MotionPreset, string> = {
-  none: 'None (static)',
-  slow_zoom_in: 'Slow Zoom In',
-  slow_zoom_out: 'Slow Zoom Out',
-  pan_left: 'Pan Left',
-  pan_right: 'Pan Right',
-  float_soft: 'Float Soft',
+  none: '없음 (정지)',
+  slow_zoom_in: '천천히 확대',
+  slow_zoom_out: '천천히 축소',
+  pan_left: '왼쪽으로 이동',
+  pan_right: '오른쪽으로 이동',
+  float_soft: '부드럽게 흔들림',
+};
+
+/** Short Korean description shown under the motion selector so the user
+ *  knows what to expect without having to play the preview. */
+export const MOTION_DESCRIPTION: Record<MotionPreset, string> = {
+  none: '사진이 가만히 있어요.',
+  slow_zoom_in: '사진이 영상 동안 서서히 확대돼요.',
+  slow_zoom_out: '사진이 영상 동안 서서히 축소돼요.',
+  pan_left: '카메라가 오른쪽에서 왼쪽으로 천천히 이동해요.',
+  pan_right: '카메라가 왼쪽에서 오른쪽으로 천천히 이동해요.',
+  float_soft: '사진이 미세하게 떠오르듯 흔들려요.',
 };
 
 function clamp(v: number, lo: number, hi: number): number {

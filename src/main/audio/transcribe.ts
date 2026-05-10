@@ -1,23 +1,25 @@
 import { ChildProcess, spawn, spawnSync } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ffmpegPath } from '../render/binaries';
 import type { LanguageCode, LyricLine } from '../../shared/types';
+import { app } from 'electron';
 
 /**
  * Whisper transcription support.
  *
- * The app does NOT bundle whisper — it would balloon the install. Instead
- * we look for a whisper-compatible CLI on the user's PATH at request time.
- * Two flavors are supported:
- *
- *   - `whisper`         OpenAI's official Python whisper CLI
- *   - `whisper-cpp` /   ggerganov/whisper.cpp's `main` binary, also
- *     `main`            sometimes installed as `whisper-cpp`
- *
- * If neither is found, the IPC handler returns a structured "not installed"
- * error and the renderer surfaces a friendly Korean message + install hint.
+ * Detection order (Phase 5-1):
+ *   1. **Bundled** whisper-cpp at `resources/whisper/bin/<platform>/whisper-cli`
+ *      — present in packaged app builds when the OS-specific binary was
+ *      shipped. Zero install for end users. The actual binary fetch is a
+ *      build-time step (see README §"Whisper bundling"); this file just
+ *      knows where to look.
+ *   2. **System** `whisper` / `whisper-cpp` / `whisper-cli` on PATH — the
+ *      v0 path. Honored as a fallback so power users with their own install
+ *      still work.
+ *   3. **Manual lyric input** — when neither is found the renderer falls
+ *      back to the manual lyrics editor with a friendly Korean prompt.
  *
  * Audio is sliced by ffmpeg first so whisper only sees the user's selected
  * clip range. This keeps transcription fast and aligns timestamps to the
@@ -79,6 +81,18 @@ export function detectWhisperBinary(force = false): TranscribeBinary | null {
   if (!force && detectionCache && now - detectionCache.at < DETECTION_TTL_MS) {
     return detectionCache.result;
   }
+
+  // 1. Bundled whisper-cli (Phase 5-1 plumbing). The actual binary is
+  //    fetched at build time; in dev / sandbox builds it may not exist
+  //    yet, in which case we fall through to the system PATH path.
+  const bundled = bundledWhisperPath();
+  if (bundled && existsSync(bundled) && probeBinary(bundled)) {
+    const result: TranscribeBinary = { kind: 'whisper-cpp', bin: bundled };
+    detectionCache = { at: now, result };
+    return result;
+  }
+
+  // 2. System PATH fallback.
   const candidates: TranscribeBinary[] = [
     { kind: 'python-whisper', bin: 'whisper' },
     { kind: 'whisper-cpp', bin: 'whisper-cpp' },
@@ -91,6 +105,68 @@ export function detectWhisperBinary(force = false): TranscribeBinary | null {
     }
   }
   detectionCache = { at: now, result: null };
+  return null;
+}
+
+/**
+ * Path the bundled whisper-cli is expected to live at when packaged. The
+ * binary is shipped per host OS via electron-builder's `extraResources`
+ * (see package.json + README §"Whisper bundling"). Returns null if we're
+ * not running in Electron / the resource path isn't set.
+ *
+ * Layout:
+ *   <resources>/whisper/bin/<platform>/whisper-cli[.exe]
+ *
+ * <platform> ∈ {darwin-arm64, darwin-x64, linux-x64, win32-x64}.
+ */
+function bundledWhisperPath(): string | null {
+  let resourcesPath: string | null = null;
+  try {
+    if (app && app.isPackaged) {
+      // process.resourcesPath is set by Electron in packaged builds.
+      resourcesPath = process.resourcesPath ?? null;
+    } else {
+      // Dev: the bundle lives under the repo's resources/ if the user
+      // pre-fetched it (build script puts it there). Optional in dev.
+      resourcesPath = join(process.cwd(), 'resources');
+    }
+  } catch {
+    return null;
+  }
+  if (!resourcesPath) return null;
+  const platformKey = (() => {
+    if (process.platform === 'darwin') {
+      return process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+    }
+    if (process.platform === 'win32') return 'win32-x64';
+    if (process.platform === 'linux') return 'linux-x64';
+    return null;
+  })();
+  if (!platformKey) return null;
+  const binName = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
+  return join(resourcesPath, 'whisper', 'bin', platformKey, binName);
+}
+
+/**
+ * Default model path for the bundled whisper-cli. The binary needs to be
+ * told where the ggml model file lives via `-m`. We ship one model under
+ * resources/whisper/models/ and pass its path automatically.
+ */
+export function bundledWhisperModelPath(): string | null {
+  let resourcesPath: string | null = null;
+  try {
+    resourcesPath = app && app.isPackaged
+      ? (process.resourcesPath ?? null)
+      : join(process.cwd(), 'resources');
+  } catch {
+    return null;
+  }
+  if (!resourcesPath) return null;
+  const candidates = ['ggml-base.bin', 'ggml-tiny.bin'];
+  for (const name of candidates) {
+    const p = join(resourcesPath, 'whisper', 'models', name);
+    if (existsSync(p)) return p;
+  }
   return null;
 }
 
@@ -190,8 +266,11 @@ async function runWhisperCpp(
   langHint?: LanguageCode | 'auto',
 ): Promise<TranscribeOk> {
   const outPrefix = join(tempDir, 'slice');
+  // Prefer the bundled model when present; fall back to whisper-cpp's
+  // default search path (e.g. user's ~/.cache or models/ next to bin).
+  const modelPath = bundledWhisperModelPath() ?? 'models/ggml-base.bin';
   const args = [
-    '-m', 'models/ggml-tiny.bin', // user-installed; fallback to default search
+    '-m', modelPath,
     '-f', wavPath,
     '-of', outPrefix,
     '-oj', // JSON output

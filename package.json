@@ -59,6 +59,11 @@
         "from": "assets/fonts",
         "to": "assets/fonts",
         "filter": ["**/*.ttf", "**/*.otf", "**/*.woff2", "README.md"]
+      },
+      {
+        "from": "resources/whisper",
+        "to": "whisper",
+        "filter": ["**/*"]
       }
     ],
     "mac": {

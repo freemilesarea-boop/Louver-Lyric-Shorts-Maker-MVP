@@ -13,8 +13,8 @@ import type { Template } from '../../shared/types';
 
 const minimalWhite: Template = {
   id: 'minimal-white',
-  name: 'Minimal White',
-  description: '깨끗한 흰 배경, 큰 검정 가사',
+  name: '미니멀 화이트',
+  description: '깨끗한 흰 톤, 큰 검정 가사',
   fontFamily: '"Inter", "Pretendard", sans-serif',
   fontStack: {
     base: '"Inter", "Pretendard"',
@@ -36,7 +36,10 @@ const minimalWhite: Template = {
   backgroundEffect: 'blur',
   animationStyle: 'fade',
   cardBg: '#FFFFFF',
-  overlayOpacity: 0.85,
+  // 0.85 made the entire frame look like a giant white card hiding the
+  // photo. Lowered so the upload reads through clearly while the white
+  // mood is still felt at the lyric band.
+  overlayOpacity: 0.25,
   frameStyle: 'rounded',
   frameColor: '#FFFFFF',
   shadowStyle: 'soft',
@@ -50,8 +53,8 @@ const minimalWhite: Template = {
 
 const darkMusicPlayer: Template = {
   id: 'dark-music-player',
-  name: 'Dark Music Player',
-  description: '딥다크 + 진한 자막 + 재생 컨트롤',
+  name: '다크 뮤직 플레이어',
+  description: '진한 어둠 + 굵은 자막 + 재생 컨트롤',
   fontFamily: '"Inter", sans-serif',
   fontStack: {
     base: '"Inter"',
@@ -69,7 +72,7 @@ const darkMusicPlayer: Template = {
   backgroundEffect: 'darken',
   animationStyle: 'slide',
   cardBg: '#0a0a0c',
-  overlayOpacity: 0.55,
+  overlayOpacity: 0.35,
   frameStyle: 'rounded',
   frameColor: '#1f1f29',
   shadowStyle: 'soft',
@@ -83,8 +86,8 @@ const darkMusicPlayer: Template = {
 
 const spotifyInspired: Template = {
   id: 'spotify-inspired',
-  name: 'Spotify Inspired',
-  description: '스트리밍 느낌, 좌측정렬 큰 글씨 (자체 디자인)',
+  name: 'Spotify 스타일',
+  description: '스트리밍 플레이어 느낌, 좌측 정렬 큰 글씨 (자체 디자인)',
   fontFamily: '"Inter", sans-serif',
   fontStack: {
     base: '"Inter", "SF Pro Display"',
@@ -102,7 +105,7 @@ const spotifyInspired: Template = {
   backgroundEffect: 'darken',
   animationStyle: 'fade',
   cardBg: '#121212',
-  overlayOpacity: 0.6,
+  overlayOpacity: 0.35,
   frameStyle: 'rounded',
   frameColor: '#181818',
   shadowStyle: 'soft',
@@ -112,12 +115,13 @@ const spotifyInspired: Template = {
   animationPreset: 'slide_up',
   reactiveMode: 'waveform_boost',
   cinematicFxPreset: 'subtle_bloom',
+  playerChrome: 'spotify-like',
 };
 
 const appleMusicInspired: Template = {
   id: 'apple-music-inspired',
-  name: 'Apple Music Inspired',
-  description: '풀블리드 컬러 + 거대 타이포 (자체 디자인)',
+  name: 'Apple Music 스타일',
+  description: '풀 컬러 배경 + 거대 타이포 (자체 디자인)',
   fontFamily: '"SF Pro Display", "Inter", sans-serif',
   fontStack: {
     base: '"SF Pro Display", "Inter"',
@@ -145,12 +149,13 @@ const appleMusicInspired: Template = {
   animationPreset: 'fade',
   reactiveMode: 'cinematic_bloom',
   cinematicFxPreset: 'soft_blur',
+  playerChrome: 'apple-like',
 };
 
 const youtubeMusicInspired: Template = {
   id: 'youtube-music-inspired',
-  name: 'YouTube Music Inspired',
-  description: '레드 액센트 + 원형 카드 (자체 디자인)',
+  name: 'YouTube Music 스타일',
+  description: '레드 포인트 + 원형 앨범 (자체 디자인)',
   fontFamily: '"Inter", sans-serif',
   fontStack: {
     base: '"Inter", "Roboto"',
@@ -168,7 +173,7 @@ const youtubeMusicInspired: Template = {
   backgroundEffect: 'darken',
   animationStyle: 'fade',
   cardBg: '#0f0f0f',
-  overlayOpacity: 0.55,
+  overlayOpacity: 0.35,
   frameStyle: 'circle',
   frameColor: '#0f0f0f',
   shadowStyle: 'soft',
@@ -178,12 +183,13 @@ const youtubeMusicInspired: Template = {
   animationPreset: 'soft_pop',
   reactiveMode: 'soft_pulse',
   cinematicFxPreset: 'clean_cinematic',
+  playerChrome: 'youtube-like',
 };
 
 const polaroidMood: Template = {
   id: 'polaroid-mood',
-  name: 'Polaroid Mood',
-  description: '폴라로이드 보더 + 페이크 웨이브폼',
+  name: '폴라로이드 무드',
+  description: '폴라로이드 테두리 + 잔잔한 웨이브',
   fontFamily: '"Caveat", "Pretendard", cursive',
   fontStack: {
     base: '"Caveat", "Pretendard"',
@@ -201,7 +207,7 @@ const polaroidMood: Template = {
   backgroundEffect: 'sepia',
   animationStyle: 'none',
   cardBg: '#F5EFE0',
-  overlayOpacity: 0.4,
+  overlayOpacity: 0.2,
   frameStyle: 'polaroid',
   framePadding: 0.025,
   frameColor: '#FFFCF2',
@@ -216,8 +222,8 @@ const polaroidMood: Template = {
 
 const cassetteTape: Template = {
   id: 'cassette-tape',
-  name: 'Cassette Tape',
-  description: '레트로 카세트 보디 + 릴 데코',
+  name: '카세트 테이프',
+  description: '레트로 카세트 + 릴 장식',
   fontFamily: '"Bebas Neue", "Inter", sans-serif',
   fontStack: {
     base: '"Bebas Neue", "Inter"',
@@ -235,7 +241,7 @@ const cassetteTape: Template = {
   backgroundEffect: 'sepia',
   animationStyle: 'none',
   cardBg: '#3b2a1a',
-  overlayOpacity: 0.5,
+  overlayOpacity: 0.3,
   frameStyle: 'cassette',
   frameColor: '#d8b984',
   shadowStyle: 'hard',
@@ -249,7 +255,7 @@ const cassetteTape: Template = {
 
 const vhsNight: Template = {
   id: 'vhs-night',
-  name: 'VHS Night',
+  name: 'VHS 야간',
   description: '심야 VHS 노이즈 + 스캔라인',
   fontFamily: '"VT323", "Inter", monospace',
   fontStack: {
@@ -268,7 +274,7 @@ const vhsNight: Template = {
   backgroundEffect: 'darken',
   animationStyle: 'fade',
   cardBg: '#0a0014',
-  overlayOpacity: 0.6,
+  overlayOpacity: 0.4,
   frameStyle: 'photo',
   frameColor: '#1c1c2e',
   shadowStyle: 'glow',
@@ -283,8 +289,8 @@ const vhsNight: Template = {
 
 const softKpopLyric: Template = {
   id: 'soft-kpop-lyric',
-  name: 'Soft K-Pop Lyric',
-  description: '파스텔 무드 + 스파클 데코',
+  name: '소프트 K-팝 가사',
+  description: '파스텔 무드 + 반짝이 장식',
   fontFamily: '"Pretendard", "Inter", sans-serif',
   fontStack: {
     base: '"Pretendard", "Inter"',
@@ -301,8 +307,10 @@ const softKpopLyric: Template = {
   progressBarStyle: 'thin',
   backgroundEffect: 'blur',
   animationStyle: 'fade',
+  // Soft pink mood, but cardBg now only shows in lyric band — photo
+  // dominates. Tint dropped from 0.5 so the upload isn't pink-washed.
   cardBg: '#FFB7C5',
-  overlayOpacity: 0.5,
+  overlayOpacity: 0.25,
   frameStyle: 'rounded',
   frameColor: '#FFE6F0',
   shadowStyle: 'soft',
@@ -316,8 +324,8 @@ const softKpopLyric: Template = {
 
 const neonDrive: Template = {
   id: 'neon-drive',
-  name: 'Neon Drive',
-  description: '네온 사이버펑크 글로우 보더',
+  name: '네온 드라이브',
+  description: '네온 사이버펑크 글로우 테두리',
   fontFamily: '"Orbitron", "Inter", sans-serif',
   fontStack: {
     base: '"Orbitron", "Inter"',
@@ -335,7 +343,7 @@ const neonDrive: Template = {
   backgroundEffect: 'darken',
   animationStyle: 'slide',
   cardBg: '#06061a',
-  overlayOpacity: 0.65,
+  overlayOpacity: 0.4,
   frameStyle: 'neon-border',
   frameColor: '#00FFD1',
   glowColor: '#FF00C8',

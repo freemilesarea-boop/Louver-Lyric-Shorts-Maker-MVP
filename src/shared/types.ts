@@ -144,6 +144,10 @@ export interface Template {
   reactiveMode?: ReactiveMode;
   /** Default cinematic FX preset. User can override per-project. */
   cinematicFxPreset?: FxPreset;
+  /** Optional player-style chrome painted as part of the scene chrome
+   *  layer. When set, paints a subtle music-app-feel card with track line,
+   *  progress, controls. Self-design only — no platform logos / glyphs. */
+  playerChrome?: 'apple-like' | 'spotify-like' | 'youtube-like';
 }
 
 export interface LyricLine {

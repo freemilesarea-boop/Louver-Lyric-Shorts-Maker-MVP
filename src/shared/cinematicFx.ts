@@ -286,12 +286,12 @@ export const FX_PRESETS: FxPreset[] = [
 ];
 
 export const FX_LABEL: Record<FxPreset, string> = {
-  none: 'None',
-  clean_cinematic: 'Clean Cinematic',
-  subtle_bloom: 'Subtle Bloom',
-  soft_blur: 'Soft Blur',
-  dust_grain: 'Dust + Grain',
-  aberration_grain: 'Aberration + Grain',
-  bloom_neon: 'Bloom Neon',
-  film_texture: 'Film Texture',
+  none: '없음',
+  clean_cinematic: '깨끗한 시네마',
+  subtle_bloom: '은은한 빛 번짐',
+  soft_blur: '부드러운 블러',
+  dust_grain: '먼지 + 그레인',
+  aberration_grain: '색수차 + 그레인',
+  bloom_neon: '네온 빛 번짐',
+  film_texture: '필름 질감',
 };

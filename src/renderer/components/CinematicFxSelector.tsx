@@ -12,7 +12,7 @@ export default function CinematicFxSelector(): JSX.Element {
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="rounded-full bg-white/10 px-2 py-1 text-white/70">
-        Template default:&nbsp;
+        템플릿 기본:&nbsp;
         <span className="font-semibold text-white">{FX_LABEL[templateDefault]}</span>
       </span>
       <select
@@ -22,9 +22,9 @@ export default function CinematicFxSelector(): JSX.Element {
           setManual(v === '__auto__' ? null : (v as FxPreset));
         }}
         className="rounded-md border border-white/10 bg-ink-800 px-2 py-1 text-xs focus:border-white/40 focus:outline-none"
-        title="시네마틱 FX 프리셋 수동 선택"
+        title="감성 필터 직접 선택"
       >
-        <option value="__auto__">Auto ({FX_LABEL[templateDefault]})</option>
+        <option value="__auto__">자동 ({FX_LABEL[templateDefault]})</option>
         {FX_PRESETS.map((p) => (
           <option key={p} value={p}>
             {FX_LABEL[p]}
@@ -33,7 +33,7 @@ export default function CinematicFxSelector(): JSX.Element {
       </select>
       {manual && (
         <span className="rounded-full bg-accent/20 px-2 py-1 text-accent">
-          Manual: {FX_LABEL[effective]}
+          직접 선택: {FX_LABEL[effective]}
         </span>
       )}
     </div>

@@ -54,7 +54,7 @@ export default function FontSelector(): JSX.Element {
     <div className="space-y-2 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-full bg-white/10 px-2 py-1 text-white/70">
-          Auto for {language}: <span className="font-semibold text-white">{FONTS[auto].label}</span>
+          {language} 자동 추천: <span className="font-semibold text-white">{FONTS[auto].label}</span>
         </span>
         <select
           value={userFontKey ?? '__auto__'}
@@ -63,13 +63,13 @@ export default function FontSelector(): JSX.Element {
             setUserFontKey(v === '__auto__' ? null : (v as FontKey));
           }}
           className="rounded-md border border-white/10 bg-ink-800 px-2 py-1 text-xs focus:border-white/40 focus:outline-none"
-          title="폰트 수동 선택 — preview + export 모두 동일하게 적용"
+          title="글씨체 직접 선택 — 미리보기 / 출력 모두 동일하게 적용"
         >
-          <option value="__auto__">Auto ({FONTS[auto].label})</option>
+          <option value="__auto__">자동 ({FONTS[auto].label})</option>
           {FONT_KEYS.map((k) => {
             const label = FONTS[k].label;
             const bundled = bundleStatus[k];
-            const tag = bundled === false ? ' (system fallback)' : '';
+            const tag = bundled === false ? ' (기본 글씨체로 표시)' : '';
             return (
               <option key={k} value={k}>
                 {label}
@@ -80,7 +80,7 @@ export default function FontSelector(): JSX.Element {
         </select>
         {userFontKey && (
           <span className="rounded-full bg-accent/20 px-2 py-1 text-accent">
-            Manual: {def.label}
+            직접 선택: {def.label}
           </span>
         )}
       </div>
@@ -96,8 +96,7 @@ export default function FontSelector(): JSX.Element {
 
       {bundleStatus[effective] === false && def.files.length > 0 && (
         <div className="text-[11px] text-white/40">
-          이 폰트의 번들 파일이 누락되어 시스템 폴백으로 표시 중입니다. 정확한
-          글리프를 보려면 <code>assets/fonts/</code> 에 해당 TTF 를 넣어주세요.
+          이 글씨체의 파일이 없어서 기본 글씨체로 표시 중입니다.
         </div>
       )}
     </div>

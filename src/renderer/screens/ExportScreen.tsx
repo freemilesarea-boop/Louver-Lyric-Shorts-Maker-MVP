@@ -28,8 +28,8 @@ function SingleView(): JSX.Element {
   return (
     <div className="flex h-full items-center justify-center px-8">
       <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-ink-900 p-8">
-        <h1 className="text-2xl font-bold tracking-tight">영상 출력</h1>
-        <p className="mt-1 text-sm text-white/60">1080×1920 H.264 MP4로 렌더링합니다.</p>
+        <h1 className="text-2xl font-bold tracking-tight">영상 만들기</h1>
+        <p className="mt-1 text-sm text-white/60">1080×1920 세로 영상 (MP4)으로 만듭니다.</p>
 
         <div className="mt-6">
           <div className="flex items-end justify-between text-xs text-white/60">
@@ -55,7 +55,7 @@ function SingleView(): JSX.Element {
 
         {error && (
           <div className="mt-6 whitespace-pre-wrap break-words rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            <div className="font-semibold">렌더 실패</div>
+            <div className="font-semibold">영상 만들기에 실패했어요</div>
             <div className="mt-1 font-mono text-xs leading-relaxed">{error}</div>
           </div>
         )}
@@ -66,11 +66,11 @@ function SingleView(): JSX.Element {
             <div className="mt-1 break-all font-mono text-xs">{lastOutputPath}</div>
             {lastTimings && (
               <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-emerald-200/80">
-                <div>Total <span className="font-mono text-emerald-100">{(lastTimings.totalMs / 1000).toFixed(1)}s</span></div>
-                <div>ffmpeg <span className="font-mono text-emerald-100">{(lastTimings.ffmpegMs / 1000).toFixed(1)}s</span></div>
-                <div>Overlay bake <span className="font-mono text-emerald-100">{lastTimings.overlayMaterializeMs}ms</span></div>
-                <div>Keyframes <span className="font-mono text-emerald-100">{lastTimings.overlayCount}</span></div>
-                <div className="col-span-2">File size <span className="font-mono text-emerald-100">{(lastTimings.outputSizeBytes / 1024 / 1024).toFixed(2)} MB</span></div>
+                <div>전체 시간 <span className="font-mono text-emerald-100">{(lastTimings.totalMs / 1000).toFixed(1)}초</span></div>
+                <div>인코딩 <span className="font-mono text-emerald-100">{(lastTimings.ffmpegMs / 1000).toFixed(1)}초</span></div>
+                <div>가사 그리기 <span className="font-mono text-emerald-100">{lastTimings.overlayMaterializeMs}ms</span></div>
+                <div>키프레임 수 <span className="font-mono text-emerald-100">{lastTimings.overlayCount}</span></div>
+                <div className="col-span-2">파일 크기 <span className="font-mono text-emerald-100">{(lastTimings.outputSizeBytes / 1024 / 1024).toFixed(2)} MB</span></div>
               </div>
             )}
           </div>
@@ -82,7 +82,7 @@ function SingleView(): JSX.Element {
           </button>
           {isRendering && !done && (
             <button onClick={() => api().cancelRender()} className="rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-red-500/20">
-              ⨯ 렌더 취소
+              ⨯ 만들기 취소
             </button>
           )}
           {done && lastOutputPath && (
@@ -131,7 +131,7 @@ function BatchView(): JSX.Element {
     <div className="flex h-full items-center justify-center px-8">
       <div className="flex max-h-full w-full max-w-3xl flex-col rounded-2xl border border-white/10 bg-ink-900 p-7">
         <div className="flex items-baseline justify-between gap-4">
-          <h1 className="text-2xl font-bold tracking-tight">배치 출력</h1>
+          <h1 className="text-2xl font-bold tracking-tight">여러 스타일 동시 출력</h1>
           <div className="text-xs text-white/60">
             {done + failed + skipped} / {items.length} 완료
             {failed > 0 && <span className="ml-2 text-red-300">({failed} 실패)</span>}
@@ -159,12 +159,12 @@ function BatchView(): JSX.Element {
         {/* summary */}
         {finished && (
           <div className="mt-5 rounded-md border border-white/10 bg-ink-800/60 px-4 py-3 text-sm">
-            <div className="font-semibold text-white">배치 완료</div>
+            <div className="font-semibold text-white">모두 완료되었습니다</div>
             <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-white/70 sm:grid-cols-4">
               <div>생성 <span className="font-mono text-emerald-300">{done}</span></div>
               <div>실패 <span className="font-mono text-red-300">{failed}</span></div>
               {skipped > 0 && <div>건너뜀 <span className="font-mono">{skipped}</span></div>}
-              <div>소요 <span className="font-mono">{(elapsedMs / 1000).toFixed(1)}s</span></div>
+              <div>소요 <span className="font-mono">{(elapsedMs / 1000).toFixed(1)}초</span></div>
             </div>
             {failed > 0 && (
               <div className="mt-2 text-[11px] text-red-300">
@@ -181,7 +181,7 @@ function BatchView(): JSX.Element {
           </button>
           {isRendering && !cancelRequested && (
             <button onClick={onCancel} className="rounded-lg bg-white/10 px-4 py-2 text-sm hover:bg-red-500/20">
-              ⨯ 배치 취소
+              ⨯ 전체 취소
             </button>
           )}
           {finished && outputDir && (
@@ -202,7 +202,7 @@ function BatchRow(props: { item: BatchItem; active: boolean }): JSX.Element {
       case 'pending':
         return <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/60">대기</span>;
       case 'rendering':
-        return <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] text-accent">렌더 중 · {Math.round(item.progressPercent ?? 0)}%</span>;
+        return <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] text-accent">만드는 중 · {Math.round(item.progressPercent ?? 0)}%</span>;
       case 'done':
         return <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">완료</span>;
       case 'failed':
@@ -257,7 +257,7 @@ function stageLabel(stage: string): string {
     case 'preparing':
       return '준비 중...';
     case 'rendering':
-      return '렌더링 중...';
+      return '영상 만드는 중...';
     case 'finalizing':
       return '마무리 중...';
     case 'done':

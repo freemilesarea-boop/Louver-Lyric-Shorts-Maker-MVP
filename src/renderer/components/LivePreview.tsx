@@ -204,6 +204,7 @@ export default function LivePreview(props: Props): JSX.Element {
       lyricPositionOverride: props.lyricPositionOverride,
       fontKey: props.fontKey,
       watermark: props.watermark ?? null,
+      durationSec: props.durationSec,
     });
     // Safe-zone overlay — preview-only. Painted last so it sits on top
     // of every other layer, including grain.
