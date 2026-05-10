@@ -34,6 +34,7 @@ interface Props {
   reactiveMode: ReactiveMode;
   amplitudeCurve: AmplitudeCurve | null;
   fxPreset: FxPreset;
+  karaokeEnabled: boolean;
   forcedChunkIndex?: number | null;
 }
 
@@ -149,6 +150,15 @@ export default function LivePreview(props: Props): JSX.Element {
   // preview and export at corresponding moments (50ms resolution).
   const fxSeed = Math.round(tNowSec * 1000) | 0;
 
+  // Karaoke progress = position within the active chunk, 0..1.
+  const karaoke = useMemo(() => {
+    if (!props.karaokeEnabled || activeIdx < 0) return undefined;
+    const chunk = chunks[activeIdx];
+    const dur = Math.max(0, chunk.end - chunk.start);
+    const p = dur > 0 ? Math.max(0, Math.min(1, (tNowSec - chunk.start) / dur)) : 0;
+    return { enabled: true, progress: p };
+  }, [props.karaokeEnabled, activeIdx, chunks, tNowSec]);
+
   const timeRatio = props.durationSec > 0 ? tNowSec / props.durationSec : 0;
 
   // Repaint on every state change.
@@ -177,6 +187,7 @@ export default function LivePreview(props: Props): JSX.Element {
       reactive: reactiveState,
       fxConfig,
       fxSeed,
+      karaoke,
     });
   }, [
     photo,
@@ -192,6 +203,7 @@ export default function LivePreview(props: Props): JSX.Element {
     reactiveState,
     fxConfig,
     fxSeed,
+    karaoke,
   ]);
 
   return (

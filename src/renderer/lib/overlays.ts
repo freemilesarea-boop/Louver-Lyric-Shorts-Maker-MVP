@@ -8,7 +8,7 @@ import type {
   ReactiveMode,
   Template,
 } from '../../shared/types';
-import { renderScene, SCENE_W, SCENE_H } from '../../shared/scene';
+import { renderScene, SCENE_W, SCENE_H, lyricWordCount } from '../../shared/scene';
 import {
   ANIMATION_KEYFRAME_FPS,
   ENTER_SEC,
@@ -33,6 +33,9 @@ interface BuildOpts {
   durationSec: number;
   trackTitle?: string;
   artistName?: string;
+  /** When true, hold phase is subdivided into one keyframe per word so the
+   *  active-word visual updates throughout the chunk. */
+  karaokeEnabled?: boolean;
 }
 
 export interface SlicedLyric {
@@ -105,7 +108,17 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
 
   for (const chunk of chunks) {
     const chunkDur = Math.max(0, chunk.end - chunk.start);
-    const slots = planKeyframes(opts.animationPreset, chunkDur, keyframeFps);
+    // When karaoke is on, subdivide the hold phase so each word activation
+    // gets its own keyframe — otherwise the active-word would stay frozen
+    // throughout the longest portion of the chunk.
+    const wordCount = opts.karaokeEnabled ? lyricWordCount(chunk.line) : 0;
+    const holdSubdivisions = opts.karaokeEnabled ? Math.max(1, wordCount) : undefined;
+    const slots = planKeyframes(
+      opts.animationPreset,
+      chunkDur,
+      keyframeFps,
+      holdSubdivisions,
+    );
 
     for (const slot of slots) {
       const animState = isStaticAnimation(opts.animationPreset)
@@ -124,6 +137,8 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       // Seed grain/dust per keyframe so each PNG has fresh noise but is
       // reproducible. Resolution is ~50ms — enough to feel like film grain.
       const fxSeed = Math.round(tClip * 1000) | 0;
+      // Karaoke progress = position within this chunk, 0..1.
+      const karaokeProgress = chunkDur > 0 ? slot.sampleSec / chunkDur : 0;
 
       const png = await renderOverlayPng({
         template: opts.template,
@@ -134,6 +149,9 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
         reactive,
         fxConfig,
         fxSeed,
+        karaoke: opts.karaokeEnabled
+          ? { enabled: true, progress: karaokeProgress }
+          : undefined,
       });
       out.push({
         base64: png,
@@ -175,6 +193,7 @@ interface OverlayPngOpts {
   reactive?: import('../../shared/audioReactive').ReactiveState;
   fxConfig?: import('../../shared/cinematicFx').FxConfig;
   fxSeed?: number;
+  karaoke?: { enabled: boolean; progress: number };
 }
 
 async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
@@ -198,6 +217,7 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     reactive: o.reactive,
     fxConfig: o.fxConfig,
     fxSeed: o.fxSeed,
+    karaoke: o.karaoke,
   });
 
   return await canvasToBase64Png(canvas);

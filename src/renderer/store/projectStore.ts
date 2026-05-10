@@ -76,6 +76,9 @@ interface ProjectState {
   /** Pre-computed amplitude timeline for the active clip range. */
   amplitudeCurve: AmplitudeCurve | null;
 
+  /** Karaoke "lite" — paint active token as time progresses. Default off. */
+  karaokeEnabled: boolean;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -111,6 +114,7 @@ interface ProjectState {
   setManualReactiveMode: (mode: ReactiveMode | null) => void;
   setManualFxPreset: (preset: FxPreset | null) => void;
   setAmplitudeCurve: (curve: AmplitudeCurve | null) => void;
+  setKaraokeEnabled: (v: boolean) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -199,6 +203,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   manualReactiveMode: null,
   manualFxPreset: null,
   amplitudeCurve: null,
+  karaokeEnabled: false,
 
   selectedTemplateId: templates[0].id,
 
@@ -264,6 +269,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setManualReactiveMode: (manualReactiveMode) => set({ manualReactiveMode }),
   setManualFxPreset: (manualFxPreset) => set({ manualFxPreset }),
   setAmplitudeCurve: (amplitudeCurve) => set({ amplitudeCurve }),
+  setKaraokeEnabled: (karaokeEnabled) => set({ karaokeEnabled }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 

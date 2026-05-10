@@ -135,6 +135,7 @@ export default function EditorScreen(): JSX.Element {
         durationSec: state.durationSec,
         trackTitle: state.trackTitle,
         artistName: state.artistName,
+        karaokeEnabled: state.karaokeEnabled,
       });
 
       const result = await api().startRender({
@@ -190,6 +191,7 @@ export default function EditorScreen(): JSX.Element {
             reactiveMode={reactive}
             amplitudeCurve={state.amplitudeCurve}
             fxPreset={fxPreset}
+            karaokeEnabled={state.karaokeEnabled}
           />
         </div>
         <div className="mt-2 text-[10px] text-white/40">
@@ -212,7 +214,17 @@ export default function EditorScreen(): JSX.Element {
               <MotionSelector />
             </SubControl>
             <SubControl label="Lyric Animation">
-              <AnimationSelector />
+              <div className="space-y-2">
+                <AnimationSelector />
+                <label className="flex cursor-pointer items-center gap-2 text-[11px] text-white/70">
+                  <input
+                    type="checkbox"
+                    checked={state.karaokeEnabled}
+                    onChange={(e) => state.setKaraokeEnabled(e.target.checked)}
+                  />
+                  Karaoke Sync (단어 단위 하이라이트, 기본 OFF)
+                </label>
+              </div>
             </SubControl>
             <SubControl label="Audio Reactive">
               <ReactiveSelector />

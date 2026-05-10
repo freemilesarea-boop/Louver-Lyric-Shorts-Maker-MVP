@@ -12,6 +12,7 @@ import { drawImageWithMotion, isStaticMotion, motionAt } from './motion';
 import { REST_STATE, type AnimationState } from './animation';
 import { REST_REACTIVE, type ReactiveState } from './audioReactive';
 import { type FxConfig, paintCinematicFx } from './cinematicFx';
+import { paintKaraokeText, splitTokens } from './karaoke';
 
 /** Canonical export resolution. All layout math is computed against this size
  * and scaled for the live preview by passing width/height to the same code. */
@@ -197,6 +198,13 @@ export interface RenderSceneOpts {
   /** Integer seed for the FX noise/dust positions (must agree across
    *  preview & export at the same moment for parity). */
   fxSeed?: number;
+  /** Karaoke "lite" — when set, paint the active token (= floor(progress
+   *  × wordCount)) with the template sub-color + glow. */
+  karaoke?: {
+    enabled: boolean;
+    /** 0..1 — clip-relative progress through the current chunk. */
+    progress: number;
+  };
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
@@ -556,33 +564,83 @@ function paintLyric(
   ctx.textAlign = pos.align;
   ctx.textBaseline = 'middle';
 
+  // Karaoke toggle picks the per-token painter; otherwise stay on the
+  // legacy single-color line painter.
+  const karaokeOn = o.karaoke?.enabled === true;
+  const progress = o.karaoke?.progress ?? 0;
+  const glowAmount = clamp01(anim.glow + reactive.glow);
+
   if (o.lyric.text && o.lyric.text.trim()) {
-    paintTextLines(ctx, {
-      text: o.lyric.text,
-      x: pos.xAnchor,
-      y: pos.yEN,
-      maxWidth: pos.maxWidth,
-      fontSize: font.sizeEN,
-      fontWeight: font.weight,
-      family: font.family,
-      color: colors.en,
-      shadow,
-    });
+    if (karaokeOn) {
+      paintKaraokeText(ctx, {
+        text: o.lyric.text,
+        x: pos.xAnchor,
+        y: pos.yEN,
+        maxWidth: pos.maxWidth,
+        fontSize: font.sizeEN,
+        fontWeight: font.weight,
+        family: font.family,
+        baseColor: colors.en,
+        activeColor: t.lyricSubColor,
+        glowColor: t.glowColor ?? t.lyricSubColor,
+        glowAmount,
+        shadow,
+        progress,
+        textAlign: pos.align,
+      });
+    } else {
+      paintTextLines(ctx, {
+        text: o.lyric.text,
+        x: pos.xAnchor,
+        y: pos.yEN,
+        maxWidth: pos.maxWidth,
+        fontSize: font.sizeEN,
+        fontWeight: font.weight,
+        family: font.family,
+        color: colors.en,
+        shadow,
+      });
+    }
   }
   if (o.lyric.ko && o.lyric.ko.trim()) {
-    paintTextLines(ctx, {
-      text: o.lyric.ko,
-      x: pos.xAnchor,
-      y: pos.yKO,
-      maxWidth: pos.maxWidth,
-      fontSize: font.sizeKO,
-      fontWeight: 500,
-      family: font.family,
-      color: colors.ko,
-      shadow,
-    });
+    if (karaokeOn) {
+      paintKaraokeText(ctx, {
+        text: o.lyric.ko,
+        x: pos.xAnchor,
+        y: pos.yKO,
+        maxWidth: pos.maxWidth,
+        fontSize: font.sizeKO,
+        fontWeight: 500,
+        family: font.family,
+        baseColor: colors.ko,
+        activeColor: t.lyricSubColor,
+        glowColor: t.glowColor ?? t.lyricSubColor,
+        glowAmount,
+        shadow,
+        progress,
+        textAlign: pos.align,
+      });
+    } else {
+      paintTextLines(ctx, {
+        text: o.lyric.ko,
+        x: pos.xAnchor,
+        y: pos.yKO,
+        maxWidth: pos.maxWidth,
+        fontSize: font.sizeKO,
+        fontWeight: 500,
+        family: font.family,
+        color: colors.ko,
+        shadow,
+      });
+    }
   }
   ctx.restore();
+}
+
+/** Combined word count across en + ko (used by overlays.ts to size the
+ *  hold-phase keyframe subdivision when karaoke is on). */
+export function lyricWordCount(line: { text?: string; ko?: string }): number {
+  return splitTokens(line.text ?? '').length + splitTokens(line.ko ?? '').length;
 }
 
 function paintMeta(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {

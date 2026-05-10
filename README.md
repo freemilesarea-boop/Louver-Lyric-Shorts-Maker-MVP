@@ -119,7 +119,9 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 5.1 | 데모 렌더 팩 (20+ 합성 시안)          | ✅ (3-1)   |
 | 6   | Whisper 자동 가사 추출                | ✅ (3-2)   |
 | 6.5 | Batch Render (한 번에 여러 스타일)    | ✅ (3-3)   |
-| 7   | BPM detection / 단어별 하이라이트     | ⬜ 다음 단계 |
+| 6.6 | Custom Preset 저장/불러오기           | ✅ (3-4)   |
+| 6.7 | Karaoke 단어 하이라이트 (lite)        | ✅ (3-5)   |
+| 7   | BPM detection / forced alignment      | ⬜ 다음 단계 |
 
 ### 1.5 변경 요약
 

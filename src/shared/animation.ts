@@ -137,12 +137,26 @@ export function planKeyframes(
   /** Optional override of ANIMATION_KEYFRAME_FPS — used by the export
    *  scheduler to throttle total keyframe count when there are many chunks. */
   keyframeFpsOverride?: number,
+  /**
+   * Number of slices to break the hold phase into. Used by karaoke so each
+   * word activation gets its own keyframe (otherwise the active-word would
+   * stay frozen during the hold phase). 1 = legacy single-keyframe hold.
+   * Caller should pass the chunk's word count when karaoke is on.
+   */
+  holdSubdivisions?: number,
 ): KeyframeSlot[] {
   if (chunkDurationSec <= 0) return [];
   if (isStaticAnimation(preset)) {
-    return [
-      { sampleSec: chunkDurationSec / 2, windowStart: 0, windowEnd: chunkDurationSec },
-    ];
+    // No enter/exit animation, but karaoke may still want the chunk
+    // subdivided so the active word changes during playback.
+    const subs = Math.max(1, Math.floor(holdSubdivisions ?? 1));
+    const out: KeyframeSlot[] = [];
+    for (let k = 0; k < subs; k++) {
+      const a = (k * chunkDurationSec) / subs;
+      const b = ((k + 1) * chunkDurationSec) / subs;
+      out.push({ sampleSec: (a + b) / 2, windowStart: a, windowEnd: b });
+    }
+    return out;
   }
   const enterDur = Math.min(ENTER_SEC, chunkDurationSec / 3);
   const exitDur = Math.min(EXIT_SEC, chunkDurationSec / 3);
@@ -161,11 +175,13 @@ export function planKeyframes(
   }
   // Hold — only emit if there's actually a hold window.
   if (holdEnd > enterDur) {
-    slots.push({
-      sampleSec: enterDur + (holdEnd - enterDur) / 2,
-      windowStart: enterDur,
-      windowEnd: holdEnd,
-    });
+    const subs = Math.max(1, Math.floor(holdSubdivisions ?? 1));
+    const holdDur = holdEnd - enterDur;
+    for (let k = 0; k < subs; k++) {
+      const a = enterDur + (k * holdDur) / subs;
+      const b = enterDur + ((k + 1) * holdDur) / subs;
+      slots.push({ sampleSec: (a + b) / 2, windowStart: a, windowEnd: b });
+    }
   }
   // Exit keyframes.
   for (let j = 0; j < exitCount; j++) {

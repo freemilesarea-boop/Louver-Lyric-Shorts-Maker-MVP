@@ -108,6 +108,7 @@ export default function BatchPicker(): JSX.Element {
         artistName: state.artistName,
         amplitudeCurve: state.amplitudeCurve,
         outputDir,
+        karaokeEnabled: state.karaokeEnabled,
       },
       {
         isCancelRequested: () => useProjectStore.getState().batchCancelRequested,

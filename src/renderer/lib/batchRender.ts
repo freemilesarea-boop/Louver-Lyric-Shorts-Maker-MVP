@@ -74,6 +74,8 @@ export interface BatchInputs {
   artistName?: string;
   amplitudeCurve: AmplitudeCurve | null;
   outputDir: string;
+  /** Bake karaoke word highlight into every batch item's overlays. */
+  karaokeEnabled?: boolean;
 }
 
 export interface BatchHooks {
@@ -136,6 +138,7 @@ export async function runBatch(
             durationSec: inputs.durationSec,
             trackTitle: inputs.trackTitle,
             artistName: inputs.artistName,
+            karaokeEnabled: inputs.karaokeEnabled,
           });
 
       const result = await api().startRender({
