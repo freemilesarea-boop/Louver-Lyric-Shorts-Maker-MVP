@@ -8,6 +8,7 @@ import type {
   Template,
 } from '../../shared/types';
 import type { FontKey } from '../../shared/fonts';
+import { getExportPreset, type ExportPresetKey } from '../../shared/exportPresets';
 import { templates } from '../templates/templates';
 import { SAMPLE_PRESETS } from '../samples/samplePresets';
 import type { BatchItem } from '../store/projectStore';
@@ -82,6 +83,9 @@ export interface BatchInputs {
   lyricPositionOverride?: LyricPosition | null;
   /** User-picked font (FontSelector). Applied to every batch item. */
   fontKey?: FontKey | null;
+  /** Active export preset. Drives encode params + filename suffix for
+   *  every batch item. Omitted = pipeline defaults. */
+  exportPresetKey?: ExportPresetKey;
 }
 
 export interface BatchHooks {
@@ -149,6 +153,7 @@ export async function runBatch(
             fontKey: inputs.fontKey ?? null,
           });
 
+      const presetDef = getExportPreset(inputs.exportPresetKey);
       const result = await api().startRender({
         imagePath: inputs.imagePath,
         audioPath: inputs.audioPath,
@@ -166,7 +171,8 @@ export async function runBatch(
         reactiveMode: item.reactiveMode,
         amplitudeCurve: inputs.amplitudeCurve,
         fxPreset: item.fxPreset,
-        nameTag: item.id,
+        nameTag: `${item.id}${presetDef.filenameSuffix}`,
+        exportEncode: presetDef.encode,
       });
 
       if (result.ok && result.outputPath) {

@@ -28,6 +28,8 @@ import SafeZoneToggle from '../components/SafeZoneToggle';
 import HookSuggester from '../components/HookSuggester';
 import FontSelector from '../components/FontSelector';
 import { prettyErrorMessage } from '../../shared/errors';
+import { getExportPreset } from '../../shared/exportPresets';
+import ExportPresetSelector from '../components/ExportPresetSelector';
 
 export default function EditorScreen(): JSX.Element {
   const state = useProjectStore();
@@ -143,6 +145,7 @@ export default function EditorScreen(): JSX.Element {
         fontKey: state.userFontKey,
       });
 
+      const presetDef = getExportPreset(state.exportPresetKey);
       const result = await api().startRender({
         imagePath: state.imagePath,
         audioPath: state.audioPath,
@@ -160,6 +163,8 @@ export default function EditorScreen(): JSX.Element {
         reactiveMode: reactive,
         amplitudeCurve: state.amplitudeCurve,
         fxPreset,
+        nameTag: presetDef.filenameSuffix,
+        exportEncode: presetDef.encode,
       });
 
       if (!result.ok) {
@@ -297,6 +302,10 @@ export default function EditorScreen(): JSX.Element {
             </div>
             <BatchPicker />
           </div>
+        </Section>
+
+        <Section title="Export Preset">
+          <ExportPresetSelector />
         </Section>
 
         <Section title="메타">

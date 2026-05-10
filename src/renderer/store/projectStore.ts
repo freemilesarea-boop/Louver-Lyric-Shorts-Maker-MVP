@@ -15,6 +15,11 @@ import type {
 import { templates } from '../templates/templates';
 import { detectLanguage } from '../../shared/lang';
 import type { FontKey } from '../../shared/fonts';
+import {
+  DEFAULT_EXPORT_PRESET_KEY,
+  EXPORT_PRESETS,
+  type ExportPresetKey,
+} from '../../shared/exportPresets';
 
 export type Screen = 'start' | 'editor' | 'export';
 
@@ -94,6 +99,10 @@ interface ProjectState {
    *  user pick — applies to preview canvas AND export PNG keyframes. */
   userFontKey: FontKey | null;
 
+  /** Active export preset. Drives encode params + filename suffix; the
+   *  setter also auto-links the safe-zone platform when the preset has one. */
+  exportPresetKey: ExportPresetKey;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -134,6 +143,7 @@ interface ProjectState {
   setSafeZonePlatform: (p: 'shorts' | 'reels' | 'tiktok') => void;
   setManualLyricPosition: (p: LyricPosition | null) => void;
   setUserFontKey: (k: FontKey | null) => void;
+  setExportPresetKey: (k: ExportPresetKey) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -227,6 +237,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   safeZonePlatform: 'shorts',
   manualLyricPosition: null,
   userFontKey: null,
+  exportPresetKey: DEFAULT_EXPORT_PRESET_KEY,
 
   selectedTemplateId: templates[0].id,
 
@@ -297,6 +308,16 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setSafeZonePlatform: (safeZonePlatform) => set({ safeZonePlatform }),
   setManualLyricPosition: (manualLyricPosition) => set({ manualLyricPosition }),
   setUserFontKey: (userFontKey) => set({ userFontKey }),
+  setExportPresetKey: (exportPresetKey) =>
+    set(() => {
+      // Auto-link the safe-zone platform when the preset specifies one.
+      // Master preset (safeZonePlatform: null) leaves the user's current
+      // safe-zone selection alone.
+      const def = EXPORT_PRESETS[exportPresetKey];
+      const patch: Partial<ProjectState> = { exportPresetKey };
+      if (def.safeZonePlatform) patch.safeZonePlatform = def.safeZonePlatform;
+      return patch;
+    }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 

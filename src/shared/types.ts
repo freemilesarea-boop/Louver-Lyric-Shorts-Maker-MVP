@@ -197,6 +197,16 @@ export interface RenderRequest {
    * the user can tell the variants apart in their Videos folder.
    */
   nameTag?: string;
+  /**
+   * Optional ffmpeg encode override. Bundled per export preset (see
+   * src/shared/exportPresets.ts). Omitted = pipeline falls back to the
+   * historical defaults (medium / CRF 20 / 192k AAC).
+   */
+  exportEncode?: {
+    videoPreset: 'ultrafast' | 'fast' | 'medium' | 'slow';
+    videoCrf: number;
+    audioBitrateKbps: number;
+  };
 }
 
 export interface RenderProgress {

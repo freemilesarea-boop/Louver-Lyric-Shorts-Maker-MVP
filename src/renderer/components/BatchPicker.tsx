@@ -111,6 +111,7 @@ export default function BatchPicker(): JSX.Element {
         karaokeEnabled: state.karaokeEnabled,
         lyricPositionOverride: state.manualLyricPosition,
         fontKey: state.userFontKey,
+        exportPresetKey: state.exportPresetKey,
       },
       {
         isCancelRequested: () => useProjectStore.getState().batchCancelRequested,

@@ -105,9 +105,16 @@ export async function runRender(
     args.push('-map', '[vout]', '-map', '1:a');
     args.push('-r', String(FPS));
     args.push('-t', String(req.durationSec));
-    args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '20');
+    // Encode params come from the export preset bundle when set; otherwise
+    // fall back to the historical defaults so legacy callers (and the
+    // renderer-side preview path) keep working unchanged.
+    const enc = req.exportEncode;
+    const videoPreset = enc?.videoPreset ?? 'medium';
+    const videoCrf = enc?.videoCrf ?? 20;
+    const audioBitrateKbps = enc?.audioBitrateKbps ?? 192;
+    args.push('-c:v', 'libx264', '-preset', videoPreset, '-crf', String(videoCrf));
     args.push('-pix_fmt', 'yuv420p', '-movflags', '+faststart');
-    args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '44100');
+    args.push('-c:a', 'aac', '-b:a', `${audioBitrateKbps}k`, '-ar', '44100');
     args.push('-shortest');
     args.push('-progress', 'pipe:1');
     args.push(outputPath);
