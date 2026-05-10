@@ -285,14 +285,23 @@ Actions 매트릭스를 구성. 워크플로 파일은
    모듈 호스트 OS 에 맞게 재빌드)
 4. `npm run typecheck`
 5. `npm run build`
-6. `npm run dist:<os>` (각 매트릭스 항목별로 다름)
-7. `npx tsx scripts/verify-packaged-binaries.ts` — **호스트 OS 와
+6. **Smoke tests** (Phase 4-6 추가): `test:fonts` + `test:watermark` +
+   `test:export-presets`. 호스트별로 ffmpeg-static 가 다르므로 (macOS
+   libx264 vs Linux libx264 vs Windows libx264) 인코딩 회귀를 OS 별로
+   잡는다.
+7. **RC QA harness** (Phase 4-6 추가): `test:rc-qa`. Items 4-9 — 워터마크
+   on/off 렌더, safe-zone export 미포함, hook suggester, whisper graceful
+   fallback, 한글+공백 경로, custom preset 라운드트립. Windows 에서는
+   `npx`/`npx.cmd` 차이가 있는데 `rc-qa.ts` 내부에서 `shell:true on win32`
+   로 처리.
+8. `npm run dist:<os>` (각 매트릭스 항목별로 다름)
+9. `npx tsx scripts/verify-packaged-binaries.ts` — **호스트 OS 와
    패키지 안의 ffmpeg/ffprobe 바이너리 매직넘버가 일치하는지 검증**.
    불일치 시 잡 실패 → artifact 업로드 안 됨.
-8. `actions/upload-artifact@v4` — `release/*.AppImage` (ubuntu) /
-   `release/*.dmg` `*.zip` (macOS) / `release/*.exe` `*.msi` (Windows)
-   를 `dist-linux` / `dist-mac` / `dist-win` artifact 로 업로드 (14일
-   보존).
+10. `actions/upload-artifact@v4` — `release/*.AppImage` (ubuntu) /
+    `release/*.dmg` `*.zip` (macOS) / `release/*.exe` `*.msi` (Windows)
+    를 `dist-linux` / `dist-mac` / `dist-win` artifact 로 업로드 (14일
+    보존). `if: always()` 라 dist 가 실패해도 직전 단계 로그는 남는다.
 
 **빌드 결과 다운로드**:
 1. GitHub 저장소 → Actions 탭
@@ -360,7 +369,7 @@ CI 매트릭스가 이 규칙을 자동화한다.
 | 6.10| Hook Section 자동 추천 (amplitude)    | ✅ (3-8)   |
 | 6.99| Test packaging 준비                   | ✅ (3-9)   |
 | 7-1 | Dist build / installer test           | 🟡 Linux ✅ · mac·win 은 호스트별 (4-1) |
-| 7-2 | CI 매트릭스 (mac/win/linux 각자 호스트) | ✅ (4-2)   |
+| 7-2 | CI 매트릭스 (mac/win/linux 각자 호스트) | ✅ (4-2 / 4-6: smoke + rc-qa step 추가) |
 | 7   | BPM detection / forced alignment      | ⬜ 다음 단계 |
 
 ### 1.5 변경 요약

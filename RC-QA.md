@@ -99,8 +99,49 @@ P1 = 배포 전 반드시 해결, P2 = 배포 후 빠르게 대응, P3 = 모니�
 
 ---
 
-## 6. 결론
+## 6. CI 자동화 (Phase 4-6)
+
+`.github/workflows/build-release.yml` 가 `ubuntu-latest` / `macos-latest` /
+`windows-latest` 세 러너에서 매번 다음을 자동 실행한다:
+
+```
+checkout → setup-node@20 → npm ci → typecheck → build →
+test:fonts → test:watermark → test:export-presets →
+test:rc-qa → dist:<os> → verify-packaged-binaries.ts →
+upload-artifact (dist-linux / dist-mac / dist-win)
+```
+
+즉, 위 §1 의 11개 항목 중 10개 (typecheck, build, demo-pack 제외)가
+**3개 OS 모두에서** 매 PR/push 마다 자동 실행된다. demo-pack 은 시간이
+오래 걸려서 (~4분) CI 에서는 제외 — 로컬에서 수동 회귀 검증용.
+
+`verify-packaged-binaries.ts` 는 호스트 platform 자동 감지로 ELF /
+Mach-O / PE 매직 넘버를 확인하므로, 잘못된 호스트의 ffmpeg 바이너리가
+패키지에 들어가는 사고는 CI 가 차단한다. 자세한 매트릭스 설명은 README
+"CI 매트릭스 빌드 (Phase 4-2 / 4-6)" 절 참고.
+
+### 트리거
+
+- `main` push
+- `v*` 태그 push (릴리즈)
+- PR (src/scripts/package.json/electron.vite.config.ts 변경 시)
+- 수동 (`workflow_dispatch`)
+
+### CI 빌드 결과 다운로드
+
+1. GitHub repo → Actions → "Build Release" 워크플로
+2. 원하는 run 선택 → Artifacts 섹션
+3. `dist-linux` / `dist-mac` / `dist-win` 다운로드 (14일 보존)
+
+CI 빌드는 unsigned (CSC_IDENTITY_AUTO_DISCOVERY=false). 실제 배포 직전에
+Apple Developer ID + Authenticode 인증서를 repo secret 으로 주입하고 위
+환경변수 제거.
+
+---
+
+## 7. 결론
 
 11/11 검증 항목 모두 합격, Linux AppImage 패키징 + 바이너리 검증 정상.
+CI 매트릭스가 mac/win 까지 검증을 확장하는 인프라는 갖춰졌다.
 
 **Linux 단독 RC 는 즉시 배포 가능 상태**. mac / win 은 GitHub Actions 매트릭스 1회 성공 + 실 사용자 환경 1회 install + 렌더 확인이 끝나야 비로소 RC 진단이 끝난다 (위 §4 Must).

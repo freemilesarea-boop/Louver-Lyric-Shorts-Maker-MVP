@@ -394,6 +394,9 @@ console.log('afterDeleteCount:', afterDelete.length);
     cwd: process.cwd(),
     timeout: 30_000,
     encoding: 'utf8',
+    // On Windows `npx` is `npx.cmd`; spawnSync without shell can't resolve
+    // it. shell:true is harmless on POSIX and required on win32.
+    shell: process.platform === 'win32',
   });
   const out = (r.stdout ?? '') + (r.stderr ?? '');
   const get = (key: string): string =>

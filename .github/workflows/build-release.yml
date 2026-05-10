@@ -74,6 +74,24 @@ jobs:
       - name: Build sources
         run: npm run build
 
+      - name: Smoke tests (fonts, watermark, export presets)
+        # Pure-Node smoke checks. These are cross-platform and run on
+        # every OS so we catch host-specific regressions early — e.g.
+        # an export preset that produces a different bitrate envelope
+        # under Windows libx264, or a watermark glyph that shifts on
+        # macOS Core Text.
+        run: |
+          npm run test:fonts
+          npm run test:watermark
+          npm run test:export-presets
+
+      - name: RC QA harness
+        # Items 4-9 of RC-QA.md — watermark on/off renders, safe-zone
+        # export exclusion, hook suggester, whisper graceful fallback,
+        # Korean+spaced path round-trip, custom preset round-trip.
+        # Cross-platform after rc-qa.ts shell:true on win32.
+        run: npm run test:rc-qa
+
       - name: Build dist installer
         run: npm run ${{ matrix.dist-script }}
         env:
@@ -86,7 +104,10 @@ jobs:
       - name: Verify packaged ffmpeg/ffprobe binaries
         # Confirms the host-OS binary actually landed in the package.
         # If a future change accidentally swaps the unpack rule, this
-        # catches it before artifacts are uploaded.
+        # catches it before artifacts are uploaded. The verifier auto-
+        # detects host platform (process.platform) and asserts the
+        # matching magic number — Mach-O on macOS, PE on Windows, ELF
+        # on Linux.
         run: npx tsx scripts/verify-packaged-binaries.ts
 
       - name: Upload installer artifact
