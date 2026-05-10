@@ -534,37 +534,77 @@ function paintFrame(
 
   switch (frame.style) {
     case 'polaroid': {
-      // Smaller pad than v1 so the polaroid border is a frame around the
-      // photo, not a band that dwarfs it. Bottom band still longer than
-      // top/sides for the polaroid look.
-      const pad = Math.max(16, frame.padding || 16);
-      const bottomPad = Math.round(pad * 2.5);
+      // Phase 5-3.3: was a fillRect that covered the entire photo region
+      // when the per-line keyframe PNG (transparent except for painters)
+      // was overlaid. Now: thin stroke around the photo + a small
+      // bottom band for the polaroid label feel. Photo is never hidden.
+      const pad = 12;
+      const bottomBand = 36;
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.4)';
-      ctx.shadowBlur = 24;
-      ctx.shadowOffsetY = 10;
+      // Drop shadow under the photo edge.
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 8;
+      ctx.strokeStyle = frame.color;
+      ctx.lineWidth = pad;
+      ctx.strokeRect(
+        box.x - pad / 2,
+        box.y - pad / 2,
+        box.width + pad,
+        box.height + pad,
+      );
+      ctx.restore();
+      // Polaroid bottom label band — drawn outside the photo box, below it.
+      ctx.save();
       ctx.fillStyle = frame.color;
-      ctx.fillRect(box.x - pad, box.y - pad, box.width + pad * 2, box.height + pad + bottomPad);
+      ctx.fillRect(
+        box.x - pad,
+        box.y + box.height + pad / 2,
+        box.width + pad * 2,
+        bottomBand,
+      );
       ctx.restore();
       break;
     }
     case 'rounded': {
+      // Phase 5-3.3: was a solid fill, which painted on top of the photo
+      // (in preview mode after paintForegroundCard, in export mode where
+      // the per-line PNG overlays the photo). Now: stroked outline only.
       const r = 36;
       ctx.save();
-      ctx.fillStyle = frame.color;
-      roundedRect(ctx, box.x - 8, box.y - 8, box.width + 16, box.height + 16, r);
+      ctx.strokeStyle = frame.color;
+      ctx.lineWidth = 6;
+      // Trace the outer border path with arcs (roundedRect helper fills,
+      // we want stroke only — inline the path here).
+      const x = box.x - 6;
+      const y = box.y - 6;
+      const w = box.width + 12;
+      const h = box.height + 12;
+      const rr = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
+      ctx.stroke();
       ctx.restore();
       break;
     }
     case 'circle': {
+      // Phase 5-3.3: was a giant fill that covered the entire photo with
+      // a solid disc. Now: thin stroked ring framing the photo. (No
+      // shipped template uses this style today — kept for future.)
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
-      const r = Math.min(box.width, box.height) / 2 + 16;
+      const r = Math.min(box.width, box.height) / 2 + 8;
       ctx.save();
-      ctx.fillStyle = frame.color;
+      ctx.strokeStyle = frame.color;
+      ctx.lineWidth = 8;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.stroke();
       ctx.restore();
       break;
     }

@@ -19,6 +19,7 @@
     "test:export-presets": "tsx scripts/test-export-presets.ts",
     "test:watermark": "tsx scripts/test-watermark.ts",
     "test:rc-qa": "tsx scripts/rc-qa.ts",
+    "test:template-cover": "tsx scripts/test-template-cover.ts",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
