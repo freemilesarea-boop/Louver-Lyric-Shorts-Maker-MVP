@@ -91,8 +91,15 @@ export async function runRender(
       '-t', String(req.durationSec),
       '-i', req.audioPath,
     );
+    // Overlay PNGs are fed as single-frame inputs (no -loop). The overlay
+    // filter's `enable=between(t,a,b)` gates when each is drawn; outside
+    // its window it simply doesn't paint. Looping these via `-loop 1
+    // -framerate N` causes ffmpeg to queue duplicated frames per input
+    // until the encoder consumes them, which scales memory linearly with
+    // overlay count × (duration*fps) and OOM-killed renders with many
+    // overlays in the QA matrix.
     for (const p of overlayPaths) {
-      args.push('-loop', '1', '-framerate', String(FPS), '-i', p);
+      args.push('-i', p);
     }
     args.push('-filter_complex_script', filterScriptPath);
     args.push('-map', '[vout]', '-map', '1:a');

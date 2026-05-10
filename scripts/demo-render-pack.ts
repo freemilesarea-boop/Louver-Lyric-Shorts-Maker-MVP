@@ -416,8 +416,14 @@ async function renderOne(combo: DemoCombo): Promise<RenderReport> {
     const args: string[] = ['-y', '-loglevel', 'error'];
     args.push('-loop', '1', '-framerate', '30', '-i', photoPath);
     args.push('-ss', '0', '-t', String(durationSec), '-i', audioPath);
+    // Each overlay PNG is fed as a single frame (no -loop) so ffmpeg doesn't
+    // queue duplicated copies. The overlay filter pairs each with an
+    // `enable=between(t,a,b)` window in the filter graph; when enable is
+    // false the overlay simply doesn't draw, regardless of stream length.
+    // This is the difference between ~150MB and 16GB peak RSS for many
+    // overlays — a real OOM hazard the demo pack triggered.
     for (const k of keyframes) {
-      args.push('-loop', '1', '-framerate', '30', '-i', k.pngPath);
+      args.push('-i', k.pngPath);
     }
     args.push('-filter_complex_script', filterFile);
     args.push('-map', '[vout]', '-map', '1:a');
