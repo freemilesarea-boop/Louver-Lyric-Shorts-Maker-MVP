@@ -18,6 +18,7 @@ import {
 } from '../../shared/animation';
 import { isStaticReactive, reactiveStateAt } from '../../shared/audioReactive';
 import { fxConfigForPreset, isStaticFx } from '../../shared/cinematicFx';
+import { paintSafeZones, type SafePlatform } from '../../shared/safeZones';
 import { sliceLyrics } from '../lib/overlays';
 
 interface Props {
@@ -35,6 +36,10 @@ interface Props {
   amplitudeCurve: AmplitudeCurve | null;
   fxPreset: FxPreset;
   karaokeEnabled: boolean;
+  /** Mobile platform safe-zone overlay. Painted AFTER renderScene so it
+   *  sits visually on top — and crucially, it never gets baked into the
+   *  export PNG keyframes (overlays.ts doesn't import this). */
+  safeZone?: { enabled: boolean; platform: SafePlatform };
   forcedChunkIndex?: number | null;
 }
 
@@ -189,6 +194,11 @@ export default function LivePreview(props: Props): JSX.Element {
       fxSeed,
       karaoke,
     });
+    // Safe-zone overlay — preview-only. Painted last so it sits on top
+    // of every other layer, including grain.
+    if (props.safeZone?.enabled) {
+      paintSafeZones(ctx, SCENE_W, SCENE_H, props.safeZone.platform);
+    }
   }, [
     photo,
     currentLyric,
@@ -204,6 +214,7 @@ export default function LivePreview(props: Props): JSX.Element {
     fxConfig,
     fxSeed,
     karaoke,
+    props.safeZone,
   ]);
 
   return (

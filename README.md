@@ -121,6 +121,7 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 6.5 | Batch Render (한 번에 여러 스타일)    | ✅ (3-3)   |
 | 6.6 | Custom Preset 저장/불러오기           | ✅ (3-4)   |
 | 6.7 | Karaoke 단어 하이라이트 (lite)        | ✅ (3-5)   |
+| 6.8 | Safe Zone / 모바일 미리보기           | ✅ (3-6)   |
 | 7   | BPM detection / forced alignment      | ⬜ 다음 단계 |
 
 ### 1.5 변경 요약

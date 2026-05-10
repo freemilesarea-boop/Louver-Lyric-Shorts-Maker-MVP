@@ -79,6 +79,10 @@ interface ProjectState {
   /** Karaoke "lite" — paint active token as time progresses. Default off. */
   karaokeEnabled: boolean;
 
+  /** Mobile safe-zone preview overlay (preview-only — never exported). */
+  safeZoneEnabled: boolean;
+  safeZonePlatform: 'shorts' | 'reels' | 'tiktok';
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -115,6 +119,8 @@ interface ProjectState {
   setManualFxPreset: (preset: FxPreset | null) => void;
   setAmplitudeCurve: (curve: AmplitudeCurve | null) => void;
   setKaraokeEnabled: (v: boolean) => void;
+  setSafeZoneEnabled: (v: boolean) => void;
+  setSafeZonePlatform: (p: 'shorts' | 'reels' | 'tiktok') => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -204,6 +210,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   manualFxPreset: null,
   amplitudeCurve: null,
   karaokeEnabled: false,
+  safeZoneEnabled: false,
+  safeZonePlatform: 'shorts',
 
   selectedTemplateId: templates[0].id,
 
@@ -270,6 +278,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setManualFxPreset: (manualFxPreset) => set({ manualFxPreset }),
   setAmplitudeCurve: (amplitudeCurve) => set({ amplitudeCurve }),
   setKaraokeEnabled: (karaokeEnabled) => set({ karaokeEnabled }),
+  setSafeZoneEnabled: (safeZoneEnabled) => set({ safeZoneEnabled }),
+  setSafeZonePlatform: (safeZonePlatform) => set({ safeZonePlatform }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 

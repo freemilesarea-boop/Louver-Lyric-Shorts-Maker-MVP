@@ -24,6 +24,7 @@ import SamplePresetPicker from '../components/SamplePresetPicker';
 import TranscribeButton from '../components/TranscribeButton';
 import BatchPicker from '../components/BatchPicker';
 import CustomPresetPanel from '../components/CustomPresetPanel';
+import SafeZoneToggle from '../components/SafeZoneToggle';
 import { prettyErrorMessage } from '../../shared/errors';
 
 export default function EditorScreen(): JSX.Element {
@@ -192,7 +193,11 @@ export default function EditorScreen(): JSX.Element {
             amplitudeCurve={state.amplitudeCurve}
             fxPreset={fxPreset}
             karaokeEnabled={state.karaokeEnabled}
+            safeZone={{ enabled: state.safeZoneEnabled, platform: state.safeZonePlatform }}
           />
+        </div>
+        <div className="mt-2 w-full">
+          <SafeZoneToggle />
         </div>
         <div className="mt-2 text-[10px] text-white/40">
           이 미리보기는 export 와 동일한 scene renderer를 사용합니다.
