@@ -3,6 +3,7 @@ import type {
   AnimationPreset,
   FxPreset,
   LanguageCode,
+  LayoutOverrides,
   LyricLine,
   LyricPosition,
   OverlayPng,
@@ -53,6 +54,8 @@ interface BuildOpts {
   /** Per-project visual tweaks. Forwarded to every PNG render so the
    *  baked overlays match the live preview. */
   styleOverrides?: StyleOverrides | null;
+  /** Per-element drag positions. Same forwarding rule as styleOverrides. */
+  layoutOverrides?: LayoutOverrides | null;
 }
 
 export interface SlicedLyric {
@@ -172,6 +175,7 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
         lyricPositionOverride: opts.lyricPositionOverride ?? null,
         fontKey: opts.fontKey ?? null,
         styleOverrides: opts.styleOverrides ?? null,
+        layoutOverrides: opts.layoutOverrides ?? null,
         // Player chrome (apple/spotify/youtube-like) bakes into the per-
         // keyframe PNG when the template requests it. Progress + time row
         // are sampled at this keyframe's tClip — steppy at low keyframe
@@ -205,6 +209,7 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       fxSeed: 0,
       fontKey: opts.fontKey ?? null,
       styleOverrides: opts.styleOverrides ?? null,
+      layoutOverrides: opts.layoutOverrides ?? null,
     });
     out.push({ base64: png, startSec: 0, endSec: opts.durationSec });
   }
@@ -248,6 +253,7 @@ interface OverlayPngOpts {
   fontKey?: FontKey | null;
   watermark?: WatermarkConfig | null;
   styleOverrides?: StyleOverrides | null;
+  layoutOverrides?: LayoutOverrides | null;
   /** Total clip duration. Forwarded to renderScene for the player chrome
    *  time-row (only relevant when template.playerChrome is set). */
   durationSec?: number;
@@ -282,6 +288,7 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     fontKey: o.fontKey ?? null,
     watermark: o.watermark ?? null,
     styleOverrides: o.styleOverrides ?? null,
+    layoutOverrides: o.layoutOverrides ?? null,
     durationSec: o.durationSec,
     timeRatio: o.timeRatio,
   });

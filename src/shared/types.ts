@@ -73,6 +73,8 @@ export interface CustomPreset {
   /** Optional user style tweaks. Older presets saved before Phase 5-3
    *  don't carry this field; readers must default to empty overrides. */
   styleOverrides?: StyleOverrides;
+  /** Optional per-element drag positions. Phase 5-5+. */
+  layoutOverrides?: LayoutOverrides;
   createdAt: number;
   updatedAt: number;
 }
@@ -223,6 +225,39 @@ export interface StyleOverrides {
 /** Identity overrides — every field unset / passthrough. */
 export const EMPTY_STYLE_OVERRIDES: StyleOverrides = {};
 
+/**
+ * Per-element absolute position override in canonical 1080×1920 space.
+ * Each layoutOverrides field is independently optional. When set, the
+ * scene painter uses these coordinates as the element's CENTER (or top-
+ * left for elements that anchor by top-left, documented per field).
+ *
+ * Phase 5-5 ships drag for the three highest-impact elements (lyric,
+ * meta, waveform). Player progress / controls drag is deferred to a
+ * follow-up; the type already has slots so adding them later is a
+ * matter of extending the drag overlay UI.
+ */
+export interface LayoutPoint {
+  /** 0..SCENE_W (=1080). */
+  x: number;
+  /** 0..SCENE_H (=1920). */
+  y: number;
+}
+
+export interface LayoutOverrides {
+  /** Lyric vertical anchor — overrides resolveLyricPositioning. The user
+   *  drags by the lyric's text BASELINE (paintLyric uses textBaseline
+   *  'middle'), so y is the line's vertical mid-point. */
+  lyric?: LayoutPoint;
+  /** Track-meta (title + artist) anchor — overrides paintMeta's default
+   *  centered y=H*0.78. x=center, y=title row middle. */
+  meta?: LayoutPoint;
+  /** Waveform mid-line center — overrides scene.ts paintWaveform's
+   *  default baseY=H*0.84. The bars splay symmetrically around y. */
+  waveform?: LayoutPoint;
+}
+
+export const EMPTY_LAYOUT_OVERRIDES: LayoutOverrides = {};
+
 export interface LyricLine {
   text: string;
   ko?: string;
@@ -304,6 +339,9 @@ export interface RenderRequest {
    *  template's defaults. Pipeline forwards to the same renderScene path
    *  the preview uses, so the override pixels match. */
   styleOverrides?: StyleOverrides;
+  /** Per-element absolute positions (canonical 1080×1920) for elements
+   *  the user dragged in the preview. Empty/missing → template defaults. */
+  layoutOverrides?: LayoutOverrides;
 }
 
 export interface RenderProgress {

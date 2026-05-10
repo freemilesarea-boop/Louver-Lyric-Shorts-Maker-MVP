@@ -4,6 +4,7 @@ import type {
   AnimationPreset,
   FxPreset,
   LanguageCode,
+  LayoutOverrides,
   LyricLine,
   LyricPosition,
   MotionPreset,
@@ -13,7 +14,7 @@ import type {
   StyleOverrides,
   Template,
 } from '../../shared/types';
-import { EMPTY_STYLE_OVERRIDES } from '../../shared/types';
+import { EMPTY_LAYOUT_OVERRIDES, EMPTY_STYLE_OVERRIDES } from '../../shared/types';
 import { templates } from '../templates/templates';
 import { detectLanguage } from '../../shared/lang';
 import type { FontKey } from '../../shared/fonts';
@@ -129,6 +130,14 @@ interface ProjectState {
    *  presets. */
   styleOverrides: StyleOverrides;
 
+  /** Per-element drag positions (canonical 1080×1920). Empty by default;
+   *  populated as the user drags elements in "위치 편집 모드". Persists
+   *  into custom presets. */
+  layoutOverrides: LayoutOverrides;
+  /** When true, the preview shows drag handles on layoutable elements
+   *  and listens for drag gestures. Preview-only state, never exported. */
+  layoutEditMode: boolean;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -178,6 +187,11 @@ interface ProjectState {
    *  `undefined` clear that override, keys with a value set it. */
   setStyleOverrides: (patch: Partial<StyleOverrides>) => void;
   resetStyleOverrides: () => void;
+  /** Set or clear a single layout element's position. Passing
+   *  `undefined` for `point` clears that element's override. */
+  setLayoutOverride: (key: keyof LayoutOverrides, point: { x: number; y: number } | undefined) => void;
+  resetLayoutOverrides: () => void;
+  setLayoutEditMode: (v: boolean) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -278,6 +292,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   watermarkText: DEFAULT_WATERMARK_CONFIG.text,
   watermarkPosition: DEFAULT_WATERMARK_CONFIG.position,
   styleOverrides: { ...EMPTY_STYLE_OVERRIDES },
+  layoutOverrides: { ...EMPTY_LAYOUT_OVERRIDES },
+  layoutEditMode: false,
 
   selectedTemplateId: templates[0].id,
 
@@ -383,6 +399,22 @@ export const useProjectStore = create<ProjectState>((set) => ({
       return { styleOverrides: next };
     }),
   resetStyleOverrides: () => set({ styleOverrides: { ...EMPTY_STYLE_OVERRIDES } }),
+  setLayoutOverride: (key, point) =>
+    set((s) => {
+      const next: LayoutOverrides = { ...s.layoutOverrides };
+      if (point === undefined) {
+        delete next[key];
+      } else {
+        // Clamp to canonical canvas to avoid off-frame drags.
+        const x = Math.max(0, Math.min(1080, point.x));
+        const y = Math.max(0, Math.min(1920, point.y));
+        next[key] = { x, y };
+      }
+      return { layoutOverrides: next };
+    }),
+  resetLayoutOverrides: () =>
+    set({ layoutOverrides: { ...EMPTY_LAYOUT_OVERRIDES } }),
+  setLayoutEditMode: (layoutEditMode) => set({ layoutEditMode }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 
@@ -441,6 +473,10 @@ export function effectiveReactive(state: ProjectState): ReactiveMode {
   if (state.manualReactiveMode) return state.manualReactiveMode;
   const tpl = templates.find((t) => t.id === state.selectedTemplateId) ?? templates[0];
   return tpl.reactiveMode ?? 'none';
+}
+
+export function effectiveLayout(state: ProjectState): LayoutOverrides {
+  return state.layoutOverrides;
 }
 
 export function effectiveWatermark(

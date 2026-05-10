@@ -240,7 +240,25 @@ export function resolveLyricPositioning(
   /** Optional user override (auto-safe-position suggester) — wins over
    *  the template's own lyricPosition when set. */
   override?: Template['lyricPosition'] | null,
+  /** Phase 5-5 user drag — wins over both template default AND the
+   *  symbolic position override. When set, uses the absolute (x,y) the
+   *  user dragged the lyric to. Otherwise we fall through to the legacy
+   *  symbolic positioning. */
+  draggedTo?: { x: number; y: number } | null,
 ): LyricPositioning {
+  // Drag wins. The user has explicit pixel-precise placement; respect it.
+  if (draggedTo) {
+    const align: CanvasTextAlign =
+      t.lyricAlign === 'left' ? 'left' : t.lyricAlign === 'right' ? 'right' : 'center';
+    return {
+      yEN: Math.round(draggedTo.y),
+      yKO: Math.round(draggedTo.y + t.fontSize * 1.5),
+      xAnchor: Math.round(draggedTo.x),
+      align,
+      maxWidth: Math.round(SCENE_W * 0.9),
+    };
+  }
+
   const effective = override ?? t.lyricPosition;
   const yBase = (() => {
     switch (effective) {
@@ -306,6 +324,18 @@ export interface RenderSceneOpts {
   backgroundPhoto?: HTMLImageElement | null;
   /** User style tweaks applied on top of template defaults. */
   styleOverrides?: import('./types').StyleOverrides | null;
+  /** Per-element drag positions (canonical 1080×1920). When set, the
+   *  matching painter uses these coordinates instead of the template's
+   *  default position. Each field is independently optional. */
+  layoutOverrides?: import('./types').LayoutOverrides | null;
+  /** Pre-computed amplitude curve. Drives the per-bar waveform window
+   *  in paintWaveform. When null, the waveform falls back to the legacy
+   *  sin animation. */
+  amplitudeCurve?: import('./types').AmplitudeCurve | null;
+  /** Current playback time within the clip (seconds). Drives the
+   *  waveform's center-of-window sample. Phase 5-5 reuses LivePreview's
+   *  tNowSec. Defaults to timeRatio × durationSec when unset. */
+  tNowSec?: number;
   /** Used in preview for animated chrome (progress, waveform). 0..1. */
   timeRatio?: number;
   /** Active photo motion preset (preview only). Defaults to template default. */
@@ -524,14 +554,24 @@ function paintChrome(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
 
   // Reactive waveform — uses live amplitude when the curve is wired up.
   if (t.showWaveform) {
-    // We don't have the raw amplitude curve here (RenderSceneOpts doesn't
-    // carry it directly), but the reactive state derived from it does. For
-    // most modes, `pulse` is a faithful 0..1 echo of the smoothed amplitude
-    // at this moment. `waveformBoost` is also amplitude-derived (for the
-    // matching modes only). Combine them so any reactive mode contributes.
+    // Phase 5-5: paintWaveform now takes the full amplitude curve when
+    // available. Each bar samples a windowed offset around the current
+    // playback time → real spectrum motion. The reactive state's
+    // pulse/waveformBoost still flows in as the fallback live amplitude
+    // when no curve is wired up.
     const r = o.reactive;
     const liveAmp = r ? Math.max(r.pulse, r.waveformBoost) : null;
-    paintWaveform(ctx, t.lyricColor, ratio, liveAmp ?? null);
+    const tNow =
+      o.tNowSec ?? (o.timeRatio != null ? o.timeRatio * (o.durationSec ?? 0) : 0);
+    paintWaveform(
+      ctx,
+      t.lyricColor,
+      ratio,
+      liveAmp ?? null,
+      o.layoutOverrides?.waveform ?? null,
+      o.amplitudeCurve ?? null,
+      tNow,
+    );
   }
 
   paintDecorations(ctx, o);
@@ -764,7 +804,11 @@ function paintLyric(
     o.styleOverrides?.lyricFontScale ?? 1,
   );
   const baseShadow = resolveShadow(t);
-  const pos = resolveLyricPositioning(t, o.lyricPositionOverride ?? null);
+  const pos = resolveLyricPositioning(
+    t,
+    o.lyricPositionOverride ?? null,
+    o.layoutOverrides?.lyric ?? null,
+  );
   const anim = o.animation ?? REST_STATE;
   const reactive = o.reactive ?? REST_REACTIVE;
 
@@ -892,8 +936,10 @@ function paintMeta(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const cx = SCENE_W / 2;
-  const yTitle = Math.round(SCENE_H * 0.78);
+  // Default centered; user drag wins via layoutOverrides.meta.
+  const dragged = o.layoutOverrides?.meta;
+  const cx = dragged ? Math.round(dragged.x) : SCENE_W / 2;
+  const yTitle = dragged ? Math.round(dragged.y) : Math.round(SCENE_H * 0.78);
   // Phase 5-4: meta has its own font / color / scale overrides so users
   // can tune track-info typography independently of lyric typography.
   // Falls back to the lyric font key when metaFontKey is unset.
@@ -972,44 +1018,86 @@ function paintPlayIcon(
 /**
  * Reactive waveform painter.
  *
- * `amplitude` (0..1) is the current loudness sampled from the AmplitudeCurve
- * at clip-relative time. When non-null the bars actually breathe with the
- * music; the per-bar sin term still provides shape variation between bars
- * so they don't all bounce identically. When null we fall back to the v1
- * pure-sine animation so templates without an amplitude curve still show
- * something animated (used by demo-pack and tests that pre-date reactivity).
+ * Phase 5-5 upgrade: each bar's height now reads from a window of the
+ * amplitude curve around the current playback time. The center bar
+ * shows the moment's loudness; bars to the left/right look slightly
+ * earlier/later in the curve. This produces a real "music spectrum
+ * sliding past" effect instead of one global pulse multiplied by a
+ * per-bar sin.
  *
- * Note: export-time waveform is rendered by ffmpeg drawbox in the filter
- * graph (see src/main/render/filters.ts §7). That path is still synthetic
- * sine — wiring the amplitude curve into ffmpeg expressions per-bar is a
- * follow-up. The PREVIEW reactivity here is the immediate-feedback fix the
- * beta tester noticed.
+ * When the amplitude curve isn't available (demo-pack, certain tests),
+ * we fall back to the per-bar sin animation seeded with `ratio` so
+ * something still moves. `amplitude` is the live single-sample loudness
+ * used by templates that haven't passed a full curve.
+ *
+ * Note: export-time waveform is still rendered by ffmpeg drawbox in
+ * filters.ts §7 (synthetic sin). Wiring the per-bar curve into ffmpeg
+ * expressions is the Phase 5-6 follow-up — it's the same architectural
+ * change as moving progress to drawbox in Phase 5-4.
  */
 function paintWaveform(
   ctx: CanvasRenderingContext2D,
   color: string,
   ratio: number,
   amplitude: number | null,
+  /** Optional center point (x,y) for the bar baseline. When null the
+   *  legacy default position (center-x, y=H*0.84) is used. */
+  position: { x: number; y: number } | null,
+  /** Optional pre-computed amplitude curve. When provided, each bar's
+   *  height is sampled from a window around the current playback time
+   *  → real spectrum-like motion. */
+  curve: import('./types').AmplitudeCurve | null,
+  /** Current playback time in seconds within the clip. */
+  tNowSec: number,
 ): void {
   const bars = 32;
   const margin = 100;
-  const baseY = Math.round(SCENE_H * 0.84);
   const region = SCENE_W - margin * 2;
   const slot = Math.floor(region / bars);
+  const baseY = position ? Math.round(position.y) : Math.round(SCENE_H * 0.84);
+  const baseX = position
+    ? Math.round(position.x - region / 2)
+    : margin;
   // Map raw amplitude (0..1) into a reactive boost applied on top of a
   // baseline so quiet sections still show some shape.
   const amp = amplitude == null ? null : Math.max(0, Math.min(1, amplitude));
-  const reactiveGain = amp == null ? 0 : amp * 60; // up to 60px additional bar height
-  ctx.save();
-  for (let i = 0; i < bars; i++) {
+
+  // Per-bar height — first preference is the amplitude curve window
+  // (real spectrum motion); fallback is the per-bar sin animation.
+  const heightForBar = (i: number): number => {
+    if (curve && curve.values.length > 0) {
+      // Window of ±0.6s around tNowSec, mapped across the bar count.
+      const windowSec = 1.2;
+      const offsetSec = ((i - bars / 2) / bars) * windowSec;
+      const sampleT = Math.max(0, tNowSec + offsetSec);
+      const idx = Math.min(
+        curve.values.length - 1,
+        Math.max(0, Math.round(sampleT / curve.intervalSec)),
+      );
+      const v = Math.max(0, Math.min(1, curve.values[idx] ?? 0));
+      // Bars span 14..110 px. Quiet sections sit near the baseline so
+      // the waveform never collapses to a flat line.
+      return 14 + v * 96;
+    }
+    // Legacy sin path.
     const seed = (i * 37) % 100;
     const phase = ratio * Math.PI * 4 + i * 0.7;
-    const baseline = (seed / 100) * 24 + 18; // 18..42 baseline
+    const baseline = (seed / 100) * 24 + 18;
     const sinShape = (0.5 + 0.5 * Math.sin(phase)) * 14;
-    const reactive = (0.5 + 0.5 * Math.sin(phase * 1.3)) * reactiveGain;
-    const h = Math.max(10, Math.min(110, baseline + sinShape + reactive));
-    const x = margin + i * slot;
-    ctx.fillStyle = withAlpha(color, amp != null && amp > 0.6 ? 0.95 : 0.8);
+    const reactive = (0.5 + 0.5 * Math.sin(phase * 1.3)) * (amp == null ? 0 : amp * 60);
+    return Math.max(10, Math.min(110, baseline + sinShape + reactive));
+  };
+
+  ctx.save();
+  for (let i = 0; i < bars; i++) {
+    const h = heightForBar(i);
+    const x = baseX + i * slot;
+    // Highlight the center two bars (current playback position).
+    const isCurrent = i >= bars / 2 - 1 && i <= bars / 2;
+    ctx.fillStyle = withAlpha(
+      color,
+      isCurrent ? 1 : amp != null && amp > 0.6 ? 0.95 : 0.78,
+    );
     ctx.fillRect(x, baseY - h / 2, Math.max(2, slot - 4), h);
   }
   ctx.restore();

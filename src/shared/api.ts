@@ -5,6 +5,7 @@ import type {
   CustomPreset,
   FxPreset,
   LanguageCode,
+  LayoutOverrides,
   LyricLine,
   MotionPreset,
   ReactiveMode,
@@ -23,6 +24,7 @@ export interface CustomPresetSaveInput {
   cinematicFxPreset: FxPreset;
   language: LanguageCode | null;
   styleOverrides?: StyleOverrides;
+  layoutOverrides?: LayoutOverrides;
   forceOverwrite?: boolean;
 }
 

@@ -119,6 +119,7 @@ export default function BatchPicker(): JSX.Element {
           position: state.watermarkPosition,
         },
         styleOverrides: state.styleOverrides,
+        layoutOverrides: state.layoutOverrides,
       },
       {
         isCancelRequested: () => useProjectStore.getState().batchCancelRequested,

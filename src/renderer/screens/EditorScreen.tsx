@@ -149,6 +149,7 @@ export default function EditorScreen(): JSX.Element {
         fontKey: state.userFontKey,
         watermark,
         styleOverrides: state.styleOverrides,
+        layoutOverrides: state.layoutOverrides,
       });
 
       const presetDef = getExportPreset(state.exportPresetKey);
@@ -173,6 +174,7 @@ export default function EditorScreen(): JSX.Element {
         nameTag: presetDef.filenameSuffix,
         exportEncode: presetDef.encode,
         styleOverrides: state.styleOverrides,
+        layoutOverrides: state.layoutOverrides,
       });
 
       if (!result.ok) {
@@ -216,13 +218,36 @@ export default function EditorScreen(): JSX.Element {
             fontKey={state.userFontKey}
             watermark={watermark}
             styleOverrides={state.styleOverrides}
+            layoutOverrides={state.layoutOverrides}
+            layoutEditMode={state.layoutEditMode}
+            onLayoutChange={state.setLayoutOverride}
           />
         </div>
         <div className="mt-2 w-full">
           <SafeZoneToggle />
         </div>
+        <div className="mt-2 flex w-full items-center justify-between gap-2 text-[11px]">
+          <label className="flex cursor-pointer items-center gap-2 text-white/70">
+            <input
+              type="checkbox"
+              checked={state.layoutEditMode}
+              onChange={(e) => state.setLayoutEditMode(e.target.checked)}
+            />
+            위치 편집 모드 (가사 / 곡 정보 / 웨이브폼 드래그)
+          </label>
+          {Object.keys(state.layoutOverrides).length > 0 && (
+            <button
+              onClick={state.resetLayoutOverrides}
+              className="rounded-md bg-white/5 px-2 py-1 text-[10px] text-white/60 hover:bg-white/15 hover:text-white"
+            >
+              위치 초기화
+            </button>
+          )}
+        </div>
         <div className="mt-2 text-[10px] text-white/40">
           미리보기와 출력 영상은 동일한 화면을 사용합니다.
+          {state.layoutEditMode &&
+            ' 핸들을 끌어 위치를 옮길 수 있어요. 더블클릭하면 기본값으로 돌아갑니다.'}
         </div>
       </div>
 

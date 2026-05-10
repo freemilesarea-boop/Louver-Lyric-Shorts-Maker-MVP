@@ -131,8 +131,11 @@ export function buildFilterGraph(a: FilterArgs): string {
     chainIn = out;
   });
 
-  // --- 5) Progress bar ---
-  if (t.progressBarStyle !== 'none') {
+  // --- 5) Default progress bar (bottom of canvas, y≈H*0.88) ---
+  // Skipped when the template ships a playerChrome — chrome has its own
+  // progress bar inside the card (§6.5). Drawing both would put two
+  // bars on screen at different y positions.
+  if (t.progressBarStyle !== 'none' && !t.playerChrome) {
     const margin = 80;
     const barY = Math.round(H * 0.88);
     const fullW = W - margin * 2;

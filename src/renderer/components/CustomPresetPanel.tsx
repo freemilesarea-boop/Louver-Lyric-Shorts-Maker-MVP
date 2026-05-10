@@ -29,6 +29,7 @@ export default function CustomPresetPanel(): JSX.Element {
   const fx = useProjectStore(effectiveFx);
   const manualLanguage = useProjectStore((s) => s.manualLanguage);
   const styleOverrides = useProjectStore((s) => s.styleOverrides);
+  const layoutOverrides = useProjectStore((s) => s.layoutOverrides);
   const setSelectedTemplate = useProjectStore((s) => s.setSelectedTemplate);
   const setManualMotionPreset = useProjectStore((s) => s.setManualMotionPreset);
   const setManualAnimationPreset = useProjectStore((s) => s.setManualAnimationPreset);
@@ -37,6 +38,8 @@ export default function CustomPresetPanel(): JSX.Element {
   const setManualLanguage = useProjectStore((s) => s.setManualLanguage);
   const setStyleOverrides = useProjectStore((s) => s.setStyleOverrides);
   const resetStyleOverrides = useProjectStore((s) => s.resetStyleOverrides);
+  const setLayoutOverride = useProjectStore((s) => s.setLayoutOverride);
+  const resetLayoutOverrides = useProjectStore((s) => s.resetLayoutOverrides);
 
   const [name, setName] = useState('');
   const [presets, setPresets] = useState<CustomPreset[]>([]);
@@ -77,6 +80,7 @@ export default function CustomPresetPanel(): JSX.Element {
       cinematicFxPreset: fx,
       language: manualLanguage,
       styleOverrides,
+      layoutOverrides,
     };
     try {
       let reply = await api().saveCustomPreset(input);
@@ -115,6 +119,18 @@ export default function CustomPresetPanel(): JSX.Element {
       setStyleOverrides(p.styleOverrides);
     } else {
       resetStyleOverrides();
+    }
+    // Same pattern for layoutOverrides — Phase 5-5+.
+    resetLayoutOverrides();
+    if (p.layoutOverrides) {
+      for (const [key, point] of Object.entries(p.layoutOverrides) as Array<
+        [
+          'lyric' | 'meta' | 'waveform',
+          { x: number; y: number } | undefined,
+        ]
+      >) {
+        if (point) setLayoutOverride(key, point);
+      }
     }
     setStatus(`"${p.name}" 적용됨`);
   };

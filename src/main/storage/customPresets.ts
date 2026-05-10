@@ -7,6 +7,7 @@ import type {
   CustomPreset,
   FxPreset,
   LanguageCode,
+  LayoutOverrides,
   MotionPreset,
   ReactiveMode,
   StyleOverrides,
@@ -69,6 +70,10 @@ export interface SaveInput {
    *  custom look + reloading later restores the same border / lyric
    *  colors / scale the user picked. */
   styleOverrides?: StyleOverrides;
+  /** Optional per-element drag positions. Phase 5-5+. Older presets
+   *  saved before this field existed roundtrip as undefined and reset
+   *  to template defaults on load. */
+  layoutOverrides?: LayoutOverrides;
   /**
    * If a preset with the same (case-insensitive) name already exists and
    * `forceOverwrite` is false, the IPC reply includes `conflict: true` so
@@ -103,10 +108,13 @@ export async function savePreset(input: SaveInput): Promise<SaveResult> {
   }
 
   const now = Date.now();
-  // Persist styleOverrides only when at least one knob is set, so the
-  // JSON file stays small for default presets.
+  // Persist style/layout overrides only when at least one knob is set,
+  // so the JSON file stays small for default presets.
   const overrides = input.styleOverrides && Object.keys(input.styleOverrides).length > 0
     ? input.styleOverrides
+    : undefined;
+  const layout = input.layoutOverrides && Object.keys(input.layoutOverrides).length > 0
+    ? input.layoutOverrides
     : undefined;
   let next: CustomPreset;
   if (existing) {
@@ -120,6 +128,7 @@ export async function savePreset(input: SaveInput): Promise<SaveResult> {
       cinematicFxPreset: input.cinematicFxPreset,
       language: input.language,
       styleOverrides: overrides,
+      layoutOverrides: layout,
       updatedAt: now,
     };
     file.presets = file.presets.map((p) => (p.id === existing.id ? next : p));
@@ -134,6 +143,7 @@ export async function savePreset(input: SaveInput): Promise<SaveResult> {
       cinematicFxPreset: input.cinematicFxPreset,
       language: input.language,
       styleOverrides: overrides,
+      layoutOverrides: layout,
       createdAt: now,
       updatedAt: now,
     };

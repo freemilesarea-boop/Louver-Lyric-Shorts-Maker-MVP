@@ -2,6 +2,7 @@ import type {
   AmplitudeCurve,
   CustomPreset,
   LanguageCode,
+  LayoutOverrides,
   LyricLine,
   LyricPosition,
   OverlayPng,
@@ -92,6 +93,8 @@ export interface BatchInputs {
   watermark?: WatermarkConfig | null;
   /** Per-project style tweaks applied to every batch item. */
   styleOverrides?: StyleOverrides | null;
+  /** Per-element drag positions applied to every batch item. */
+  layoutOverrides?: LayoutOverrides | null;
   /** Optional separate background image. Applied to every batch item. */
   backgroundImagePath?: string | null;
 }
@@ -161,6 +164,7 @@ export async function runBatch(
             fontKey: inputs.fontKey ?? null,
             watermark: inputs.watermark ?? null,
             styleOverrides: inputs.styleOverrides ?? null,
+            layoutOverrides: inputs.layoutOverrides ?? null,
           });
 
       const presetDef = getExportPreset(inputs.exportPresetKey);
@@ -185,6 +189,7 @@ export async function runBatch(
         nameTag: `${item.id}${presetDef.filenameSuffix}`,
         exportEncode: presetDef.encode,
         styleOverrides: inputs.styleOverrides ?? undefined,
+        layoutOverrides: inputs.layoutOverrides ?? undefined,
       });
 
       if (result.ok && result.outputPath) {
