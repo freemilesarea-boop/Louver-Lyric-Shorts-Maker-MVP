@@ -210,6 +210,64 @@ ffmpeg/ffprobe 경로 처리 모두 정상.
 - `electron-builder --win` 시도 → `wine` 누락 (Windows host 또는 wine
   필수, 예상된 결과)
 
+#### CI 매트릭스 빌드 (Phase 4-2)
+
+각 OS 호스트에서 `npm install + npm run dist:<os>` 를 돌리도록 GitHub
+Actions 매트릭스를 구성. 워크플로 파일은
+[`.github/workflows/build-release.yml`](.github/workflows/build-release.yml).
+
+**실행 트리거**:
+- `main` 브랜치 push
+- `v*` 태그 push (릴리즈)
+- PR (소스 / 스크립트 / 빌드 설정 변경 시)
+- 수동 (`workflow_dispatch`)
+
+**각 OS 잡이 수행하는 단계**:
+1. `actions/checkout@v4`
+2. `actions/setup-node@v4` (Node 20 + npm 캐시)
+3. `npm ci` (postinstall 이 `electron-builder install-app-deps` 로 네이티브
+   모듈 호스트 OS 에 맞게 재빌드)
+4. `npm run typecheck`
+5. `npm run build`
+6. `npm run dist:<os>` (각 매트릭스 항목별로 다름)
+7. `npx tsx scripts/verify-packaged-binaries.ts` — **호스트 OS 와
+   패키지 안의 ffmpeg/ffprobe 바이너리 매직넘버가 일치하는지 검증**.
+   불일치 시 잡 실패 → artifact 업로드 안 됨.
+8. `actions/upload-artifact@v4` — `release/*.AppImage` (ubuntu) /
+   `release/*.dmg` `*.zip` (macOS) / `release/*.exe` `*.msi` (Windows)
+   를 `dist-linux` / `dist-mac` / `dist-win` artifact 로 업로드 (14일
+   보존).
+
+**빌드 결과 다운로드**:
+1. GitHub 저장소 → Actions 탭
+2. "Build Release" 워크플로 → 원하는 run 선택
+3. 페이지 하단 Artifacts 섹션에서 `dist-linux` / `dist-mac` / `dist-win`
+   다운로드
+
+**CSC_IDENTITY_AUTO_DISCOVERY=false** 가 잡 환경변수로 설정되어 있어
+서명 / notarization 단계는 건너뜀. 내부 테스트용 unsigned 빌드 — 실제
+배포 직전에 Apple Developer ID + Authenticode 인증서를 repo secret 으로
+주입하고 이 환경변수를 제거하면 서명까지 자동화 가능.
+
+**`scripts/verify-packaged-binaries.ts`** 는 호스트 platform 의
+expected magic 과 패키지 내부 ffmpeg(-static)/ffprobe(-static) 바이너리의
+첫 16 바이트를 비교:
+
+| Platform | Expected magic | 의미 |
+| --- | --- | --- |
+| macOS | `cf fa ed fe`, `fe ed fa cf`, `ce fa ed fe`, `fe ed fa ce`, `ca fe ba be`, `be ba fe ca` | Mach-O (32/64-bit + universal) |
+| Windows | `4d 5a` (`MZ`) | PE 실행파일 |
+| Linux | `7f 45 4c 46` | ELF |
+
+cross-build 가 잘못된 OS 바이너리를 패키지에 넣으면 이 단계가 잡고
+artifact 업로드를 막아준다 (Phase 4-1 에서 발견한 ffmpeg-static 호스트
+의존성 버그를 영구적으로 차단).
+
+**Cross-build 금지 규칙**: `npm run dist:<os>` 는 반드시 같은 OS 에서
+실행할 것. Linux 에서 mac/win 빌드 시도는 (1) `dmg-license` / `wine`
+의존성 누락으로 실패하고 (2) 통과하더라도 잘못된 ffmpeg 가 들어감.
+CI 매트릭스가 이 규칙을 자동화한다.
+
 #### 배포 전 남은 위험
 
 1. **실제 macOS / Windows 호스트에서 dist 빌드 + 설치 + 렌더 확인 필요**
@@ -246,6 +304,7 @@ ffmpeg/ffprobe 경로 처리 모두 정상.
 | 6.10| Hook Section 자동 추천 (amplitude)    | ✅ (3-8)   |
 | 6.99| Test packaging 준비                   | ✅ (3-9)   |
 | 7-1 | Dist build / installer test           | 🟡 Linux ✅ · mac·win 은 호스트별 (4-1) |
+| 7-2 | CI 매트릭스 (mac/win/linux 각자 호스트) | ✅ (4-2)   |
 | 7   | BPM detection / forced alignment      | ⬜ 다음 단계 |
 
 ### 1.5 변경 요약

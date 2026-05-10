@@ -1,0 +1,99 @@
+name: Build Release
+
+# Build dist installers for macOS / Windows / Linux on each OS's own
+# runner. This is the safe path because ffmpeg-static and
+# ffprobe-static download platform-specific binaries at `npm install`
+# time — cross-build packages the wrong-OS binary, which crashes on
+# first render. See README "Dist build 결과 (Phase 4-1)" + Phase 4-2
+# notes for the full reasoning.
+
+# Quoted to keep YAML 1.1 parsers from coercing `on` to a boolean.
+"on":
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'electron.vite.config.ts'
+      - '.github/workflows/build-release.yml'
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      # One OS failing shouldn't kill the others — devs can still grab
+      # the Linux artifact even if Windows had a transient signing issue.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            dist-script: dist:linux
+            artifact-name: dist-linux
+            artifact-glob: |
+              release/*.AppImage
+          - os: macos-latest
+            dist-script: dist:mac
+            artifact-name: dist-mac
+            artifact-glob: |
+              release/*.dmg
+              release/*.zip
+          - os: windows-latest
+            dist-script: dist:win
+            artifact-name: dist-win
+            artifact-glob: |
+              release/*.exe
+              release/*.msi
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # `npm ci` is the right choice for CI — uses package-lock.json
+        # exactly. The postinstall hook (`electron-builder install-app-deps`)
+        # rebuilds native modules for the host OS.
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build sources
+        run: npm run build
+
+      - name: Build dist installer
+        run: npm run ${{ matrix.dist-script }}
+        env:
+          # Skip code signing in CI for now — sign + notarize is a
+          # follow-on step that needs Apple Developer ID + Authenticode
+          # certs configured as repo secrets. CI artifacts produced here
+          # are unsigned and intended for internal testing.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Verify packaged ffmpeg/ffprobe binaries
+        # Confirms the host-OS binary actually landed in the package.
+        # If a future change accidentally swaps the unpack rule, this
+        # catches it before artifacts are uploaded.
+        run: npx tsx scripts/verify-packaged-binaries.ts
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-glob }}
+          if-no-files-found: warn
+          retention-days: 14
