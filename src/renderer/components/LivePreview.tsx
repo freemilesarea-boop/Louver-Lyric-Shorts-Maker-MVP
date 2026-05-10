@@ -25,6 +25,9 @@ import { sliceLyrics } from '../lib/overlays';
 
 interface Props {
   imageDataUrl: string | null;
+  /** Optional separate background image. When null the main image
+   *  doubles as the background (legacy behavior). */
+  backgroundImageDataUrl?: string | null;
   template: Template;
   language: LanguageCode;
   lyrics: LyricLine[];
@@ -48,6 +51,8 @@ interface Props {
   fontKey: FontKey | null;
   /** Watermark / branding overlay config. Null = no watermark in preview. */
   watermark?: import('../../shared/watermark').WatermarkConfig | null;
+  /** Per-project visual tweaks applied on top of template defaults. */
+  styleOverrides?: import('../../shared/types').StyleOverrides | null;
   forcedChunkIndex?: number | null;
 }
 
@@ -65,6 +70,7 @@ const PREVIEW_FRAME_INTERVAL_MS = 1000 / 30;
 export default function LivePreview(props: Props): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [photo, setPhoto] = useState<HTMLImageElement | null>(null);
+  const [bgPhoto, setBgPhoto] = useState<HTMLImageElement | null>(null);
   const [tNowSec, setTNowSec] = useState(0);
 
   useEffect(() => {
@@ -77,6 +83,17 @@ export default function LivePreview(props: Props): JSX.Element {
     img.onerror = () => setPhoto(null);
     img.src = props.imageDataUrl;
   }, [props.imageDataUrl]);
+
+  useEffect(() => {
+    if (!props.backgroundImageDataUrl) {
+      setBgPhoto(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => setBgPhoto(img);
+    img.onerror = () => setBgPhoto(null);
+    img.src = props.backgroundImageDataUrl;
+  }, [props.backgroundImageDataUrl]);
 
   // Compute clip-relative chunk windows once per inputs change.
   const chunks = useMemo(
@@ -194,6 +211,7 @@ export default function LivePreview(props: Props): JSX.Element {
       trackTitle: props.trackTitle,
       artistName: props.artistName,
       photo,
+      backgroundPhoto: bgPhoto,
       timeRatio,
       motionPreset: props.motionPreset,
       animation: animState,
@@ -204,6 +222,7 @@ export default function LivePreview(props: Props): JSX.Element {
       lyricPositionOverride: props.lyricPositionOverride,
       fontKey: props.fontKey,
       watermark: props.watermark ?? null,
+      styleOverrides: props.styleOverrides ?? null,
       durationSec: props.durationSec,
     });
     // Safe-zone overlay — preview-only. Painted last so it sits on top
@@ -213,6 +232,7 @@ export default function LivePreview(props: Props): JSX.Element {
     }
   }, [
     photo,
+    bgPhoto,
     currentLyric,
     props.template,
     props.language,
@@ -230,6 +250,7 @@ export default function LivePreview(props: Props): JSX.Element {
     props.lyricPositionOverride,
     props.fontKey,
     props.watermark,
+    props.styleOverrides,
   ]);
 
   return (

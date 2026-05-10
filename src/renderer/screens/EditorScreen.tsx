@@ -32,6 +32,7 @@ import { prettyErrorMessage } from '../../shared/errors';
 import { getExportPreset } from '../../shared/exportPresets';
 import ExportPresetSelector from '../components/ExportPresetSelector';
 import WatermarkSelector from '../components/WatermarkSelector';
+import StyleOverridesPanel from '../components/StyleOverridesPanel';
 
 export default function EditorScreen(): JSX.Element {
   const state = useProjectStore();
@@ -147,11 +148,13 @@ export default function EditorScreen(): JSX.Element {
         lyricPositionOverride: state.manualLyricPosition,
         fontKey: state.userFontKey,
         watermark,
+        styleOverrides: state.styleOverrides,
       });
 
       const presetDef = getExportPreset(state.exportPresetKey);
       const result = await api().startRender({
         imagePath: state.imagePath,
+        backgroundImagePath: state.backgroundImagePath,
         audioPath: state.audioPath,
         lyrics: state.parsedLyrics,
         template,
@@ -169,6 +172,7 @@ export default function EditorScreen(): JSX.Element {
         fxPreset,
         nameTag: presetDef.filenameSuffix,
         exportEncode: presetDef.encode,
+        styleOverrides: state.styleOverrides,
       });
 
       if (!result.ok) {
@@ -193,6 +197,7 @@ export default function EditorScreen(): JSX.Element {
         <div className="flex min-h-0 w-full flex-1 items-center justify-center">
           <LivePreview
             imageDataUrl={state.imageDataUrl}
+            backgroundImageDataUrl={state.backgroundImageDataUrl}
             template={template}
             language={language}
             lyrics={state.parsedLyrics}
@@ -210,6 +215,7 @@ export default function EditorScreen(): JSX.Element {
             lyricPositionOverride={state.manualLyricPosition}
             fontKey={state.userFontKey}
             watermark={watermark}
+            styleOverrides={state.styleOverrides}
           />
         </div>
         <div className="mt-2 w-full">
@@ -257,6 +263,10 @@ export default function EditorScreen(): JSX.Element {
               <FontSelector />
             </SubControl>
           </div>
+        </Section>
+
+        <Section title="스타일 직접 조절">
+          <StyleOverridesPanel />
         </Section>
 
         <Section title="언어">

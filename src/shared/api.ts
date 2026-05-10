@@ -11,6 +11,7 @@ import type {
   RenderProgress,
   RenderRequest,
   RenderResult,
+  StyleOverrides,
 } from './types';
 
 export interface CustomPresetSaveInput {
@@ -21,6 +22,7 @@ export interface CustomPresetSaveInput {
   reactiveMode: ReactiveMode;
   cinematicFxPreset: FxPreset;
   language: LanguageCode | null;
+  styleOverrides?: StyleOverrides;
   forceOverwrite?: boolean;
 }
 

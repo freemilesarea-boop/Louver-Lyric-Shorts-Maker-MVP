@@ -17,6 +17,13 @@ export interface FilterArgs {
   overlays: OverlayTiming[];
   /** Effective motion preset for this render. */
   motionPreset: MotionPreset;
+  /** When set, the background uses this ffmpeg input index instead of
+   *  splitting input 0. Lets the user pick a separate background image.
+   *  Phase 5-3: image only. Video/GIF defer to Phase 5-4. */
+  backgroundInputIndex?: number | null;
+  /** User scale on the foreground card (0.6..1.2). 1 = template default
+   *  (matches scene.ts resolvePhotoBox 92%×74%). */
+  mainScale?: number;
 }
 
 /**
@@ -43,15 +50,33 @@ export function buildFilterGraph(a: FilterArgs): string {
   const lines: string[] = [];
 
   // --- 1) Background (cover + effect) and 2) Foreground (centered fit) ---
-  lines.push(`[0:v]split=2[src1][src2]`);
-  lines.push(
-    `[src1]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
-      `crop=${W}:${H},` +
-      bgEffectChain(t.backgroundEffect) +
-      `[bg]`,
-  );
-  const cardW = Math.round(W * 0.86);
-  const cardH = Math.round(H * 0.62);
+  // When the user picked a separate background image, use that input as
+  // the background source and feed input 0 (main image) directly to the
+  // foreground. Otherwise split input 0 into both layers (legacy single-
+  // image flow).
+  if (a.backgroundInputIndex != null) {
+    lines.push(
+      `[${a.backgroundInputIndex}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
+        `crop=${W}:${H},` +
+        bgEffectChain(t.backgroundEffect) +
+        `[bg]`,
+    );
+    lines.push(`[0:v]copy[src2]`);
+  } else {
+    lines.push(`[0:v]split=2[src1][src2]`);
+    lines.push(
+      `[src1]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
+        `crop=${W}:${H},` +
+        bgEffectChain(t.backgroundEffect) +
+        `[bg]`,
+    );
+  }
+  // Foreground card geometry — must match scene.ts resolvePhotoBox so
+  // preview and export agree pixel-for-pixel. Phase 5-3 raised both
+  // dimensions and added a user scale override.
+  const safeScale = Math.max(0.6, Math.min(1.2, a.mainScale ?? 1));
+  const cardW = Math.round(W * 0.92 * safeScale);
+  const cardH = Math.round(H * 0.74 * safeScale);
 
   // Foreground card: when motion is static, keep the legacy fit-contain
   // behavior so the user's photo is shown in full (with letterboxing if its
@@ -76,7 +101,8 @@ export function buildFilterGraph(a: FilterArgs): string {
     void m.durationFrames;
   }
 
-  lines.push(`[bg][fg]overlay=(W-w)/2:(H-h)/2-80[stage0]`);
+  // Vertical offset matches scene.ts resolvePhotoBox: y = (H-h)/2 - 100.
+  lines.push(`[bg][fg]overlay=(W-w)/2:(H-h)/2-100[stage0]`);
 
   // --- 3) Tint overlay ---
   let chainIn = 'stage0';

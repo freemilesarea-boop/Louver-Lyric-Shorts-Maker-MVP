@@ -7,6 +7,7 @@ import type {
   LyricPosition,
   OverlayPng,
   ReactiveMode,
+  StyleOverrides,
   Template,
 } from '../../shared/types';
 import { renderScene, SCENE_W, SCENE_H, lyricWordCount } from '../../shared/scene';
@@ -49,6 +50,9 @@ interface BuildOpts {
    *  full-duration overlay PNG so the mark is visible across the whole
    *  clip — never baked into per-line keyframes (would flicker). */
   watermark?: WatermarkConfig | null;
+  /** Per-project visual tweaks. Forwarded to every PNG render so the
+   *  baked overlays match the live preview. */
+  styleOverrides?: StyleOverrides | null;
 }
 
 export interface SlicedLyric {
@@ -167,6 +171,7 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
           : undefined,
         lyricPositionOverride: opts.lyricPositionOverride ?? null,
         fontKey: opts.fontKey ?? null,
+        styleOverrides: opts.styleOverrides ?? null,
         // Player chrome (apple/spotify/youtube-like) bakes into the per-
         // keyframe PNG when the template requests it. Progress + time row
         // are sampled at this keyframe's tClip — steppy at low keyframe
@@ -199,6 +204,7 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       fxConfig,
       fxSeed: 0,
       fontKey: opts.fontKey ?? null,
+      styleOverrides: opts.styleOverrides ?? null,
     });
     out.push({ base64: png, startSec: 0, endSec: opts.durationSec });
   }
@@ -218,6 +224,7 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       fxSeed: 0,
       fontKey: opts.fontKey ?? null,
       watermark: opts.watermark,
+      styleOverrides: opts.styleOverrides ?? null,
     });
     out.push({ base64: png, startSec: 0, endSec: opts.durationSec });
   }
@@ -240,6 +247,7 @@ interface OverlayPngOpts {
   lyricPositionOverride?: LyricPosition | null;
   fontKey?: FontKey | null;
   watermark?: WatermarkConfig | null;
+  styleOverrides?: StyleOverrides | null;
   /** Total clip duration. Forwarded to renderScene for the player chrome
    *  time-row (only relevant when template.playerChrome is set). */
   durationSec?: number;
@@ -273,6 +281,7 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     lyricPositionOverride: o.lyricPositionOverride ?? null,
     fontKey: o.fontKey ?? null,
     watermark: o.watermark ?? null,
+    styleOverrides: o.styleOverrides ?? null,
     durationSec: o.durationSec,
     timeRatio: o.timeRatio,
   });

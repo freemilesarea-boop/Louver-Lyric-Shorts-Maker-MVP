@@ -10,8 +10,10 @@ import type {
   ReactiveMode,
   RenderProgress,
   RenderTimings,
+  StyleOverrides,
   Template,
 } from '../../shared/types';
+import { EMPTY_STYLE_OVERRIDES } from '../../shared/types';
 import { templates } from '../templates/templates';
 import { detectLanguage } from '../../shared/lang';
 import type { FontKey } from '../../shared/fonts';
@@ -50,8 +52,14 @@ export interface BatchItem {
 interface ProjectState {
   screen: Screen;
 
+  /** Main media (the user's primary photo). Phase 5-3: image only. */
   imagePath: string | null;
   imageDataUrl: string | null;
+  /** Optional background media. When null the main image doubles as the
+   *  background (legacy behavior). When set, renderScene + ffmpeg use this
+   *  as the blurred backdrop and `imagePath` as the foreground card. */
+  backgroundImagePath: string | null;
+  backgroundImageDataUrl: string | null;
   audioPath: string | null;
   audioDataUrl: string | null;
   audioDurationSec: number;
@@ -115,6 +123,12 @@ interface ProjectState {
   watermarkText: string;
   watermarkPosition: WatermarkPosition;
 
+  /** Per-project visual tweaks. Empty object = use template defaults
+   *  unchanged. Each field is independently optional so the user can
+   *  override one knob without committing to all. Persists into custom
+   *  presets. */
+  styleOverrides: StyleOverrides;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -133,6 +147,7 @@ interface ProjectState {
 
   setScreen: (s: Screen) => void;
   setImage: (p: string | null, dataUrl?: string | null) => void;
+  setBackgroundImage: (p: string | null, dataUrl?: string | null) => void;
   setAudio: (p: string | null, dataUrl?: string | null, durationSec?: number) => void;
   setStartSec: (s: number) => void;
   setDurationSec: (d: 15 | 30 | 60) => void;
@@ -159,6 +174,10 @@ interface ProjectState {
   setWatermarkEnabled: (v: boolean) => void;
   setWatermarkText: (s: string) => void;
   setWatermarkPosition: (p: WatermarkPosition) => void;
+  /** Patch the styleOverrides with the provided partial — keys with
+   *  `undefined` clear that override, keys with a value set it. */
+  setStyleOverrides: (patch: Partial<StyleOverrides>) => void;
+  resetStyleOverrides: () => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -226,6 +245,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   screen: 'start',
   imagePath: null,
   imageDataUrl: null,
+  backgroundImagePath: null,
+  backgroundImageDataUrl: null,
   audioPath: null,
   audioDataUrl: null,
   audioDurationSec: 0,
@@ -256,6 +277,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   watermarkEnabled: DEFAULT_WATERMARK_CONFIG.enabled,
   watermarkText: DEFAULT_WATERMARK_CONFIG.text,
   watermarkPosition: DEFAULT_WATERMARK_CONFIG.position,
+  styleOverrides: { ...EMPTY_STYLE_OVERRIDES },
 
   selectedTemplateId: templates[0].id,
 
@@ -275,6 +297,11 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setScreen: (screen) => set({ screen }),
   setImage: (imagePath, imageDataUrl = null) =>
     set({ imagePath, imageDataUrl: imageDataUrl ?? null }),
+  setBackgroundImage: (backgroundImagePath, backgroundImageDataUrl = null) =>
+    set({
+      backgroundImagePath,
+      backgroundImageDataUrl: backgroundImageDataUrl ?? null,
+    }),
   setAudio: (audioPath, audioDataUrl = null, audioDurationSec) =>
     set((s) => ({
       audioPath,
@@ -339,6 +366,23 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setWatermarkEnabled: (watermarkEnabled) => set({ watermarkEnabled }),
   setWatermarkText: (watermarkText) => set({ watermarkText }),
   setWatermarkPosition: (watermarkPosition) => set({ watermarkPosition }),
+  setStyleOverrides: (patch) =>
+    set((s) => {
+      const next: StyleOverrides = { ...s.styleOverrides };
+      // Treat undefined as "clear this override" so the UI can ship a
+      // single setter for both apply + clear.
+      for (const [key, value] of Object.entries(patch) as Array<
+        [keyof StyleOverrides, StyleOverrides[keyof StyleOverrides]]
+      >) {
+        if (value === undefined) {
+          delete next[key];
+        } else {
+          (next as Record<string, unknown>)[key] = value;
+        }
+      }
+      return { styleOverrides: next };
+    }),
+  resetStyleOverrides: () => set({ styleOverrides: { ...EMPTY_STYLE_OVERRIDES } }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 

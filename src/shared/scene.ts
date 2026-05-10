@@ -71,13 +71,22 @@ export type LyricPositioning = {
   maxWidth: number;
 };
 
-export function resolveColors(t: Template, highlightSub: boolean): ResolvedColors {
+export function resolveColors(
+  t: Template,
+  highlightSub: boolean,
+  /** Optional user overrides. Each field is independently optional so
+   *  the user can set just one (e.g. main border color) without
+   *  changing the whole template. */
+  overrides?: import('./types').StyleOverrides | null,
+): ResolvedColors {
+  const enColor = overrides?.lyricPrimaryColor ?? t.lyricColor;
+  const subColor = overrides?.lyricSecondaryColor ?? t.lyricSubColor;
   return {
-    en: t.lyricColor,
-    ko: highlightSub ? t.lyricSubColor : t.lyricColor,
+    en: enColor,
+    ko: highlightSub ? subColor : enColor,
     shadow: 'rgba(0,0,0,0.55)',
-    glow: t.glowColor ?? t.lyricSubColor,
-    frame: t.frameColor ?? '#FFFFFF',
+    glow: t.glowColor ?? subColor,
+    frame: overrides?.mainBorderColor ?? t.frameColor ?? '#FFFFFF',
   };
 }
 
@@ -136,22 +145,31 @@ export function resolveShadow(t: Template): ShadowSpec {
   }
 }
 
-export function resolvePhotoBox(_t: Template): PhotoBox {
+export function resolvePhotoBox(
+  _t: Template,
+  /** Optional user scale (0.6..1.2). 1 = template default. Lets the user
+   *  shrink/grow the foreground photo without touching the template. */
+  scale: number = 1,
+): PhotoBox {
   // Photo dominates the frame (was 86%×62% — left big cardBg margins that
   // washed out the upload). 92%×74% keeps lyric room at bottom while
   // letting the user's image be the visual anchor.
-  const width = Math.round(SCENE_W * 0.92);
-  const height = Math.round(SCENE_H * 0.74);
+  const safeScale = Math.max(0.6, Math.min(1.2, scale));
+  const width = Math.round(SCENE_W * 0.92 * safeScale);
+  const height = Math.round(SCENE_H * 0.74 * safeScale);
   const x = (SCENE_W - width) / 2;
   const y = (SCENE_H - height) / 2 - 100;
   return { x, y, width, height };
 }
 
-export function resolveFrame(t: Template): FrameSpec {
+export function resolveFrame(
+  t: Template,
+  overrides?: import('./types').StyleOverrides | null,
+): FrameSpec {
   return {
     style: t.frameStyle ?? 'none',
     padding: Math.round(SCENE_W * (t.framePadding ?? 0.0)),
-    color: t.frameColor ?? '#FFFFFF',
+    color: overrides?.mainBorderColor ?? t.frameColor ?? '#FFFFFF',
     glowColor: t.glowColor,
   };
 }
@@ -218,8 +236,15 @@ export interface RenderSceneOpts {
   lyric?: LyricLine | null;
   trackTitle?: string;
   artistName?: string;
-  /** For preview only — the source photo as an HTMLImageElement. */
+  /** For preview only — the main photo as an HTMLImageElement. Drawn as
+   *  the centered foreground card. */
   photo?: HTMLImageElement | null;
+  /** Optional separate background image. When set, drawn cover-cropped +
+   *  blurred behind the foreground. When null, `photo` doubles as the
+   *  background (legacy behavior). */
+  backgroundPhoto?: HTMLImageElement | null;
+  /** User style tweaks applied on top of template defaults. */
+  styleOverrides?: import('./types').StyleOverrides | null;
   /** Used in preview for animated chrome (progress, waveform). 0..1. */
   timeRatio?: number;
   /** Active photo motion preset (preview only). Defaults to template default. */
@@ -271,7 +296,7 @@ export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): 
   }
 
   // 2) Foreground photo card — preview only (export defers to ffmpeg).
-  const photoBox = resolvePhotoBox(t);
+  const photoBox = resolvePhotoBox(t, o.styleOverrides?.mainScale ?? 1);
   if (!o.exportMode) {
     paintForegroundCard(ctx, o, photoBox);
   }
@@ -341,8 +366,11 @@ function paintBackground(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): voi
   ctx.fillStyle = t.cardBg;
   ctx.fillRect(0, 0, SCENE_W, SCENE_H);
 
-  if (o.photo) {
-    const cover = fitCover(o.photo.width, o.photo.height, SCENE_W, SCENE_H);
+  // Background source: dedicated `backgroundPhoto` if the user picked one,
+  // otherwise fall back to the main `photo` (legacy single-image behavior).
+  const bgImage = o.backgroundPhoto ?? o.photo;
+  if (bgImage) {
+    const cover = fitCover(bgImage.width, bgImage.height, SCENE_W, SCENE_H);
     ctx.save();
     // Approximate ffmpeg's effect chain.
     const cssFilter = (() => {
@@ -360,7 +388,7 @@ function paintBackground(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): voi
     })();
     // ctx.filter is only widely supported, but Electron's Chromium has it.
     (ctx as CanvasRenderingContext2D & { filter: string }).filter = cssFilter;
-    ctx.drawImage(o.photo, cover.x, cover.y, cover.w, cover.h);
+    ctx.drawImage(bgImage, cover.x, cover.y, cover.w, cover.h);
     (ctx as CanvasRenderingContext2D & { filter: string }).filter = 'none';
     ctx.restore();
   }
@@ -501,7 +529,7 @@ function paintFrame(
   box: PhotoBox,
 ): void {
   const t = o.template;
-  const frame = resolveFrame(t);
+  const frame = resolveFrame(t, o.styleOverrides ?? null);
   if (frame.style === 'none') return;
 
   switch (frame.style) {
@@ -541,31 +569,37 @@ function paintFrame(
       break;
     }
     case 'cassette': {
-      // Outer cassette body.
-      const pad = 60;
+      // Phase 5-3: full-body cassette card was 60px on every side and
+      // dwarfed the photo. Now: thin double-border at the photo edge,
+      // cassette feel comes from template colors + decoration='reels'
+      // beneath the photo.
       ctx.save();
-      ctx.fillStyle = frame.color;
-      roundedRect(ctx, box.x - pad, box.y - pad, box.width + pad * 2, box.height + pad * 2, 30);
-      // Inner label window where the photo sits — drawn with a darker stroke.
-      ctx.strokeStyle = withAlpha('#000000', 0.6);
-      ctx.lineWidth = 6;
+      ctx.strokeStyle = frame.color;
+      ctx.lineWidth = 8;
       ctx.strokeRect(box.x - 4, box.y - 4, box.width + 8, box.height + 8);
+      ctx.strokeStyle = withAlpha('#000000', 0.5);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(box.x - 12, box.y - 12, box.width + 24, box.height + 24);
       ctx.restore();
       break;
     }
     case 'vinyl': {
-      // Big black record under the photo, photo as label.
+      // Phase 5-3: vinyl style is no longer used by any shipped template
+      // (was an anti-cover offender — full-canvas black record). Painter
+      // kept as a thin record-edge accent for any future use that wants
+      // the vibe without hiding the photo.
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
-      const r = Math.min(box.width, box.height) * 0.7;
+      const r = Math.min(box.width, box.height) * 0.55;
       ctx.save();
-      ctx.fillStyle = '#0a0a0c';
+      ctx.strokeStyle = withAlpha('#000000', 0.65);
+      ctx.lineWidth = 14;
       ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = withAlpha('#ffffff', 0.06);
-      ctx.lineWidth = 2;
-      for (let rr = r - 30; rr > r * 0.4; rr -= 18) {
+      ctx.arc(cx, cy, r + 12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = withAlpha('#ffffff', 0.08);
+      ctx.lineWidth = 1;
+      for (let rr = r + 6; rr > r * 0.7; rr -= 14) {
         ctx.beginPath();
         ctx.arc(cx, cy, rr, 0, Math.PI * 2);
         ctx.stroke();
@@ -607,7 +641,7 @@ function paintLyric(
 ): void {
   if (!o.lyric) return;
   const t = o.template;
-  const colors = resolveColors(t, o.highlightSub);
+  const colors = resolveColors(t, o.highlightSub, o.styleOverrides ?? null);
   const font = resolveFontSpec(t, o.language, o.fontKey ?? null);
   const baseShadow = resolveShadow(t);
   const pos = resolveLyricPositioning(t, o.lyricPositionOverride ?? null);

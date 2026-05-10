@@ -174,7 +174,11 @@ const youtubeMusicInspired: Template = {
   animationStyle: 'fade',
   cardBg: '#0f0f0f',
   overlayOpacity: 0.35,
-  frameStyle: 'circle',
+  // Phase 5-3: was 'circle' which clipped the user's photo into a small
+  // round mask — biggest single anti-cover offender per beta feedback.
+  // Switched to 'rounded' so the rectangular photo dominates and the
+  // YouTube-Music-feel comes from the playerChrome card alone.
+  frameStyle: 'rounded',
   frameColor: '#0f0f0f',
   shadowStyle: 'soft',
   playIconStyle: 'rounded',

@@ -70,6 +70,9 @@ export interface CustomPreset {
   reactiveMode: ReactiveMode;
   cinematicFxPreset: FxPreset;
   language: LanguageCode | null;
+  /** Optional user style tweaks. Older presets saved before Phase 5-3
+   *  don't carry this field; readers must default to empty overrides. */
+  styleOverrides?: StyleOverrides;
   createdAt: number;
   updatedAt: number;
 }
@@ -150,6 +153,33 @@ export interface Template {
   playerChrome?: 'apple-like' | 'spotify-like' | 'youtube-like';
 }
 
+/**
+ * User-side style overrides. All fields optional — null/undefined falls
+ * back to the template's value. Stored on the project + persisted in
+ * custom presets so a saved style ships with the user's tweaks intact.
+ *
+ * The brief calls for a richer set (border thickness, radius, shadow,
+ * position, alignments, glow color, panel opacity, etc.) but Phase 5-3
+ * ships only the four highest-impact controls so the architecture is in
+ * place without a UI explosion. Adding more fields later is purely a
+ * matter of extending this type + the editor UI; the threading code in
+ * scene.ts / overlays.ts / customPresets.ts already covers the plumbing.
+ */
+export interface StyleOverrides {
+  /** Solid color for the photo card border. Falls back to template.frameColor. */
+  mainBorderColor?: string;
+  /** Override for English lyric color. Falls back to template.lyricColor. */
+  lyricPrimaryColor?: string;
+  /** Override for Korean (sub-language) lyric color. Falls back to
+   *  template.lyricSubColor. */
+  lyricSecondaryColor?: string;
+  /** Multiplicative scale on the main photo box (0.6..1.2). 1 = no change. */
+  mainScale?: number;
+}
+
+/** Identity overrides — every field unset / passthrough. */
+export const EMPTY_STYLE_OVERRIDES: StyleOverrides = {};
+
 export interface LyricLine {
   text: string;
   ko?: string;
@@ -169,7 +199,23 @@ export interface OverlayPng {
 }
 
 export interface RenderRequest {
+  /**
+   * Main media path. Required. The user's primary photo — drawn as the
+   * centered foreground card and (when no `backgroundImagePath` is given)
+   * also as the blurred backdrop. Phase 5-3 keeps this image-only; video /
+   * GIF support lands in Phase 5-4.
+   *
+   * Field name kept as `imagePath` for backwards compatibility with the
+   * existing IPC + custom presets.
+   */
   imagePath: string;
+  /**
+   * Optional separate background. When set, this image is the blurred
+   * cover-cropped backdrop and `imagePath` is the centered foreground.
+   * When null/undefined, the main image doubles as the background (legacy
+   * behavior).
+   */
+  backgroundImagePath?: string | null;
   audioPath: string;
   lyrics: LyricLine[];
   template: Template;
@@ -211,6 +257,10 @@ export interface RenderRequest {
     videoCrf: number;
     audioBitrateKbps: number;
   };
+  /** User's per-project visual tweaks. Applied on top of the chosen
+   *  template's defaults. Pipeline forwards to the same renderScene path
+   *  the preview uses, so the override pixels match. */
+  styleOverrides?: StyleOverrides;
 }
 
 export interface RenderProgress {

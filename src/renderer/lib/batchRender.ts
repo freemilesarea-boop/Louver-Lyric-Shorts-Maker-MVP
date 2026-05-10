@@ -5,6 +5,7 @@ import type {
   LyricLine,
   LyricPosition,
   OverlayPng,
+  StyleOverrides,
   Template,
 } from '../../shared/types';
 import type { FontKey } from '../../shared/fonts';
@@ -89,6 +90,10 @@ export interface BatchInputs {
   exportPresetKey?: ExportPresetKey;
   /** Watermark / branding config applied to every batch item's overlays. */
   watermark?: WatermarkConfig | null;
+  /** Per-project style tweaks applied to every batch item. */
+  styleOverrides?: StyleOverrides | null;
+  /** Optional separate background image. Applied to every batch item. */
+  backgroundImagePath?: string | null;
 }
 
 export interface BatchHooks {
@@ -155,11 +160,13 @@ export async function runBatch(
             lyricPositionOverride: inputs.lyricPositionOverride ?? null,
             fontKey: inputs.fontKey ?? null,
             watermark: inputs.watermark ?? null,
+            styleOverrides: inputs.styleOverrides ?? null,
           });
 
       const presetDef = getExportPreset(inputs.exportPresetKey);
       const result = await api().startRender({
         imagePath: inputs.imagePath,
+        backgroundImagePath: inputs.backgroundImagePath ?? null,
         audioPath: inputs.audioPath,
         lyrics: inputs.lyrics,
         template: tpl,
@@ -177,6 +184,7 @@ export async function runBatch(
         fxPreset: item.fxPreset,
         nameTag: `${item.id}${presetDef.filenameSuffix}`,
         exportEncode: presetDef.encode,
+        styleOverrides: inputs.styleOverrides ?? undefined,
       });
 
       if (result.ok && result.outputPath) {
