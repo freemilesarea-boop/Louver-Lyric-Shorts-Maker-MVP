@@ -118,6 +118,7 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 5   | QA / 안정화 / 샘플 프리셋             | ✅ (2-5)   |
 | 5.1 | 데모 렌더 팩 (20+ 합성 시안)          | ✅ (3-1)   |
 | 6   | Whisper 자동 가사 추출                | ✅ (3-2)   |
+| 6.5 | Batch Render (한 번에 여러 스타일)    | ✅ (3-3)   |
 | 7   | BPM detection / 단어별 하이라이트     | ⬜ 다음 단계 |
 
 ### 1.5 변경 요약
@@ -203,6 +204,16 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
   또는 `brew install whisper-cpp`) + 버튼 비활성화. 추출 중 SIGTERM
   취소 가능. **수동 입력은 영향 없음** — 버튼은 LyricsEditor 위에
   추가되었을 뿐이고, textarea / 타임라인 / 렌더 경로는 그대로 유지.
+- **Batch Render (3-3)**: Editor 의 "배치 출력" 섹션에 두 버튼 추가 —
+  "Sample Preset 5개로 생성" / "전체 템플릿 10개로 생성". 한 번 누르면
+  큐를 만들어 ExportScreen 의 batch 뷰로 이동, 각 항목을 순차 렌더 (동시
+  실행 없음). 한 항목이 실패해도 다음 항목 계속 진행 — 실패 사유는 행
+  옆에 한국어로 표시. 출력 파일명은 `lyric_short_<tag>_<stamp>.mp4` 로
+  태그가 들어가서 같은 폴더 안에서 변형들을 구분 가능. 배치 취소는
+  진행 중 항목을 SIGTERM 으로 끊고 남은 항목은 자동으로 "건너뜀" 처리.
+  완료 후 생성/실패/건너뜀 카운트 + 총 소요 시간 + "폴더 열기" 버튼.
+  단일 렌더 UX 는 그대로 유지 — 단일 vs 배치는 `batchItems.length` 로
+  ExportScreen 이 자동 분기.
 - **안정성**:
   - 입력 파일 검증 (존재/사이즈/타입) + 친절한 에러 메시지
   - 출력 폴더 쓰기 권한 사전 체크

@@ -16,6 +16,26 @@ import { detectLanguage } from '../../shared/lang';
 
 export type Screen = 'start' | 'editor' | 'export';
 
+export type BatchItemStatus = 'pending' | 'rendering' | 'done' | 'failed' | 'skipped';
+
+export interface BatchItem {
+  /** Stable id, e.g. preset id or template id. Used for the filename tag. */
+  id: string;
+  /** Human label shown in the UI. */
+  label: string;
+  templateId: string;
+  motionPreset: MotionPreset;
+  animationPreset: AnimationPreset;
+  reactiveMode: ReactiveMode;
+  fxPreset: FxPreset;
+  language: LanguageCode;
+  status: BatchItemStatus;
+  progressPercent?: number;
+  outputPath?: string;
+  error?: string;
+  timings?: RenderTimings;
+}
+
 interface ProjectState {
   screen: Screen;
 
@@ -65,6 +85,13 @@ interface ProjectState {
   isRendering: boolean;
   lastError: string | null;
 
+  /** Batch render queue. Length === 1 means single-render UX. */
+  batchItems: BatchItem[];
+  batchActiveIdx: number;
+  batchCancelRequested: boolean;
+  batchStartedAt: number | null;
+  batchFinishedAt: number | null;
+
   setScreen: (s: Screen) => void;
   setImage: (p: string | null, dataUrl?: string | null) => void;
   setAudio: (p: string | null, dataUrl?: string | null, durationSec?: number) => void;
@@ -92,6 +119,14 @@ interface ProjectState {
   setLastOutputPath: (p: string | null) => void;
   setLastRenderTimings: (t: RenderTimings | null) => void;
   setLastError: (e: string | null) => void;
+
+  /** Batch render — replace queue and reset bookkeeping. */
+  startBatch: (items: BatchItem[]) => void;
+  setBatchActiveIdx: (i: number) => void;
+  updateBatchItem: (i: number, patch: Partial<BatchItem>) => void;
+  requestBatchCancel: () => void;
+  finishBatch: () => void;
+  resetBatch: () => void;
 }
 
 /**
@@ -174,6 +209,12 @@ export const useProjectStore = create<ProjectState>((set) => ({
   isRendering: false,
   lastError: null,
 
+  batchItems: [],
+  batchActiveIdx: -1,
+  batchCancelRequested: false,
+  batchStartedAt: null,
+  batchFinishedAt: null,
+
   setScreen: (screen) => set({ screen }),
   setImage: (imagePath, imageDataUrl = null) =>
     set({ imagePath, imageDataUrl: imageDataUrl ?? null }),
@@ -231,6 +272,30 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setLastOutputPath: (lastOutputPath) => set({ lastOutputPath }),
   setLastRenderTimings: (lastRenderTimings) => set({ lastRenderTimings }),
   setLastError: (lastError) => set({ lastError }),
+
+  startBatch: (items) =>
+    set({
+      batchItems: items,
+      batchActiveIdx: -1,
+      batchCancelRequested: false,
+      batchStartedAt: Date.now(),
+      batchFinishedAt: null,
+    }),
+  setBatchActiveIdx: (batchActiveIdx) => set({ batchActiveIdx }),
+  updateBatchItem: (i, patch) =>
+    set((s) => ({
+      batchItems: s.batchItems.map((b, idx) => (idx === i ? { ...b, ...patch } : b)),
+    })),
+  requestBatchCancel: () => set({ batchCancelRequested: true }),
+  finishBatch: () => set({ batchFinishedAt: Date.now() }),
+  resetBatch: () =>
+    set({
+      batchItems: [],
+      batchActiveIdx: -1,
+      batchCancelRequested: false,
+      batchStartedAt: null,
+      batchFinishedAt: null,
+    }),
 }));
 
 export function selectedTemplate(state: ProjectState): Template {

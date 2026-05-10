@@ -14,11 +14,23 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const off = api().onRenderProgress((p) => {
       setRenderProgress(p);
-      if (p.stage === 'done') {
-        setIsRendering(false);
-        if (p.outputPath) setLastOutputPath(p.outputPath);
-      } else if (p.stage === 'error' || p.stage === 'cancelled') {
-        setIsRendering(false);
+      // Mirror per-render progress into the active batch item (if any) so
+      // the batch view can show a live progress bar next to the row that's
+      // currently rendering. We read the active idx from the live store
+      // rather than relying on an effect dep to avoid stale closures.
+      const s = useProjectStore.getState();
+      if (s.batchItems.length > 0 && s.batchActiveIdx >= 0) {
+        if (p.stage === 'rendering') {
+          s.updateBatchItem(s.batchActiveIdx, { progressPercent: p.percent });
+        }
+      } else {
+        // Single-render flow only — track the global completion.
+        if (p.stage === 'done') {
+          setIsRendering(false);
+          if (p.outputPath) setLastOutputPath(p.outputPath);
+        } else if (p.stage === 'error' || p.stage === 'cancelled') {
+          setIsRendering(false);
+        }
       }
     });
     return off;

@@ -22,6 +22,7 @@ import AudioRangeSelector from '../components/AudioRangeSelector';
 import TemplateGallery from '../components/TemplateGallery';
 import SamplePresetPicker from '../components/SamplePresetPicker';
 import TranscribeButton from '../components/TranscribeButton';
+import BatchPicker from '../components/BatchPicker';
 import { prettyErrorMessage } from '../../shared/errors';
 
 export default function EditorScreen(): JSX.Element {
@@ -116,6 +117,7 @@ export default function EditorScreen(): JSX.Element {
     }
 
     state.setLastError(null);
+    state.resetBatch();
     state.setIsRendering(true);
     state.setScreen('export');
 
@@ -252,6 +254,15 @@ export default function EditorScreen(): JSX.Element {
 
         <Section title="줄별 타임라인">
           <LyricTimeline audioRef={audioRef} />
+        </Section>
+
+        <Section title="배치 출력">
+          <div className="space-y-1">
+            <div className="text-[11px] text-white/50">
+              한 번에 여러 스타일로 자동 생성 — 단일 영상 출력은 아래 버튼에서.
+            </div>
+            <BatchPicker />
+          </div>
         </Section>
 
         <Section title="메타">

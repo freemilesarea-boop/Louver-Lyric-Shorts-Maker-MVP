@@ -27,7 +27,11 @@ export function registerRenderHandlers(
       await fs.mkdir(outDir, { recursive: true });
 
       const stamp = formatStamp(new Date());
-      const outFile = join(outDir, `lyric_short_${stamp}.mp4`);
+      const tag = sanitizeTag(req.nameTag);
+      const outFile = join(
+        outDir,
+        tag ? `lyric_short_${tag}_${stamp}.mp4` : `lyric_short_${stamp}.mp4`,
+      );
 
       const result = await runRender(req, outFile, (percent) => {
         send({ jobId, percent, stage: 'rendering' });
@@ -65,4 +69,14 @@ function formatStamp(d: Date): string {
     pad(d.getMinutes()) +
     pad(d.getSeconds())
   );
+}
+
+/** Strip path-unsafe characters from a tag and lower-case it. */
+function sanitizeTag(tag: string | undefined | null): string {
+  if (!tag) return '';
+  return tag
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
 }

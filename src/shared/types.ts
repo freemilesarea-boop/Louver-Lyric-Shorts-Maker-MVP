@@ -164,6 +164,12 @@ export interface RenderRequest {
   amplitudeCurve?: AmplitudeCurve | null;
   /** Effective cinematic FX preset for this render. */
   fxPreset?: FxPreset;
+  /**
+   * Optional slug embedded in the output filename, e.g. `kballad_emotional`
+   * → `lyric_short_kballad_emotional_<stamp>.mp4`. Used by batch render so
+   * the user can tell the variants apart in their Videos folder.
+   */
+  nameTag?: string;
 }
 
 export interface RenderProgress {
