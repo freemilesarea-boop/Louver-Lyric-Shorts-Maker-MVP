@@ -112,6 +112,11 @@ export default function BatchPicker(): JSX.Element {
         lyricPositionOverride: state.manualLyricPosition,
         fontKey: state.userFontKey,
         exportPresetKey: state.exportPresetKey,
+        watermark: {
+          enabled: state.watermarkEnabled,
+          text: state.watermarkText,
+          position: state.watermarkPosition,
+        },
       },
       {
         isCancelRequested: () => useProjectStore.getState().batchCancelRequested,

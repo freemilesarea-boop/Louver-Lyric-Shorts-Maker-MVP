@@ -7,6 +7,7 @@ import {
   effectiveAnimation,
   effectiveReactive,
   effectiveFx,
+  effectiveWatermark,
 } from '../store/projectStore';
 import { api } from '../lib/api';
 import { buildOverlays } from '../lib/overlays';
@@ -30,6 +31,7 @@ import FontSelector from '../components/FontSelector';
 import { prettyErrorMessage } from '../../shared/errors';
 import { getExportPreset } from '../../shared/exportPresets';
 import ExportPresetSelector from '../components/ExportPresetSelector';
+import WatermarkSelector from '../components/WatermarkSelector';
 
 export default function EditorScreen(): JSX.Element {
   const state = useProjectStore();
@@ -39,6 +41,7 @@ export default function EditorScreen(): JSX.Element {
   const animation = effectiveAnimation(state);
   const reactive = effectiveReactive(state);
   const fxPreset = effectiveFx(state);
+  const watermark = effectiveWatermark(state);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -143,6 +146,7 @@ export default function EditorScreen(): JSX.Element {
         karaokeEnabled: state.karaokeEnabled,
         lyricPositionOverride: state.manualLyricPosition,
         fontKey: state.userFontKey,
+        watermark,
       });
 
       const presetDef = getExportPreset(state.exportPresetKey);
@@ -205,6 +209,7 @@ export default function EditorScreen(): JSX.Element {
             safeZone={{ enabled: state.safeZoneEnabled, platform: state.safeZonePlatform }}
             lyricPositionOverride={state.manualLyricPosition}
             fontKey={state.userFontKey}
+            watermark={watermark}
           />
         </div>
         <div className="mt-2 w-full">
@@ -306,6 +311,10 @@ export default function EditorScreen(): JSX.Element {
 
         <Section title="Export Preset">
           <ExportPresetSelector />
+        </Section>
+
+        <Section title="Watermark">
+          <WatermarkSelector />
         </Section>
 
         <Section title="메타">

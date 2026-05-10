@@ -22,6 +22,7 @@ import {
 import { reactiveStateAt } from '../../shared/audioReactive';
 import { fxConfigForPreset } from '../../shared/cinematicFx';
 import type { FontKey } from '../../shared/fonts';
+import { shouldShowWatermark, type WatermarkConfig } from '../../shared/watermark';
 
 interface BuildOpts {
   lyrics: LyricLine[];
@@ -44,6 +45,10 @@ interface BuildOpts {
   /** User-picked font key (FontSelector). Wins over template font stack
    *  when set; null/undefined falls back to per-language default. */
   fontKey?: FontKey | null;
+  /** Watermark / branding overlay config. When enabled, emits one extra
+   *  full-duration overlay PNG so the mark is visible across the whole
+   *  clip — never baked into per-line keyframes (would flicker). */
+  watermark?: WatermarkConfig | null;
 }
 
 export interface SlicedLyric {
@@ -190,6 +195,25 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
     out.push({ base64: png, startSec: 0, endSec: opts.durationSec });
   }
 
+  // Watermark — single full-duration overlay so the brand mark is visible
+  // for the entire clip without flickering between lyric chunks. Per-line
+  // keyframe PNGs do NOT carry the watermark (intentionally — that would
+  // pop the mark in/out as lines start/end).
+  if (shouldShowWatermark(opts.watermark)) {
+    const png = await renderOverlayPng({
+      template: opts.template,
+      language: opts.language,
+      highlightSub: opts.highlightSub,
+      lyric: null,
+      // No FX, no track meta — this overlay carries only the watermark.
+      fxConfig: undefined,
+      fxSeed: 0,
+      fontKey: opts.fontKey ?? null,
+      watermark: opts.watermark,
+    });
+    out.push({ base64: png, startSec: 0, endSec: opts.durationSec });
+  }
+
   return out;
 }
 
@@ -207,6 +231,7 @@ interface OverlayPngOpts {
   karaoke?: { enabled: boolean; progress: number };
   lyricPositionOverride?: LyricPosition | null;
   fontKey?: FontKey | null;
+  watermark?: WatermarkConfig | null;
 }
 
 async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
@@ -233,6 +258,7 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     karaoke: o.karaoke,
     lyricPositionOverride: o.lyricPositionOverride ?? null,
     fontKey: o.fontKey ?? null,
+    watermark: o.watermark ?? null,
   });
 
   return await canvasToBase64Png(canvas);

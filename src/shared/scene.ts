@@ -14,6 +14,7 @@ import { REST_STATE, type AnimationState } from './animation';
 import { REST_REACTIVE, type ReactiveState } from './audioReactive';
 import { type FxConfig, paintCinematicFx } from './cinematicFx';
 import { paintKaraokeText, splitTokens } from './karaoke';
+import { paintWatermark, type WatermarkConfig } from './watermark';
 
 /** Canonical export resolution. All layout math is computed against this size
  * and scaled for the live preview by passing width/height to the same code. */
@@ -242,6 +243,12 @@ export interface RenderSceneOpts {
   /** User-picked font key. Wins over template font stack when set; null /
    *  undefined falls back to template defaults + per-language hinting. */
   fontKey?: FontKey | null;
+  /** Watermark / branding overlay. Painted as the final scene step so it
+   *  sits above lyrics, FX, and reactive layers. Null/undefined or
+   *  enabled=false → no-op. For export, only the dedicated full-duration
+   *  watermark overlay PNG carries this; per-line keyframe PNGs leave it
+   *  null so the mark doesn't flicker between lyric chunks. */
+  watermark?: WatermarkConfig | null;
 }
 
 export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
@@ -290,6 +297,12 @@ export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): 
   // 8) Cinematic FX — final layer on top of everything (grain/vignette/etc).
   if (o.fxConfig) {
     paintCinematicFx(ctx, SCENE_W, SCENE_H, o.fxConfig, o.fxSeed ?? 0, o.template);
+  }
+
+  // 9) Watermark — sits above FX so the brand mark is never grain-covered.
+  //    No-op unless o.watermark is set with enabled=true.
+  if (o.watermark) {
+    paintWatermark(ctx, SCENE_W, SCENE_H, o.watermark);
   }
 
   ctx.restore();

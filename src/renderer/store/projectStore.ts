@@ -20,6 +20,10 @@ import {
   EXPORT_PRESETS,
   type ExportPresetKey,
 } from '../../shared/exportPresets';
+import {
+  DEFAULT_WATERMARK_CONFIG,
+  type WatermarkPosition,
+} from '../../shared/watermark';
 
 export type Screen = 'start' | 'editor' | 'export';
 
@@ -103,6 +107,14 @@ interface ProjectState {
    *  setter also auto-links the safe-zone platform when the preset has one. */
   exportPresetKey: ExportPresetKey;
 
+  /** Subtle branding overlay shown in preview AND baked into export.
+   *  Default: ON during dev (the brief calls for it). Tier hook in
+   *  shared/watermark.ts owns any future free/pro override. */
+  watermarkEnabled: boolean;
+  /** Empty string = use the bundled default ("Made with Louver"). */
+  watermarkText: string;
+  watermarkPosition: WatermarkPosition;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -144,6 +156,9 @@ interface ProjectState {
   setManualLyricPosition: (p: LyricPosition | null) => void;
   setUserFontKey: (k: FontKey | null) => void;
   setExportPresetKey: (k: ExportPresetKey) => void;
+  setWatermarkEnabled: (v: boolean) => void;
+  setWatermarkText: (s: string) => void;
+  setWatermarkPosition: (p: WatermarkPosition) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -238,6 +253,9 @@ export const useProjectStore = create<ProjectState>((set) => ({
   manualLyricPosition: null,
   userFontKey: null,
   exportPresetKey: DEFAULT_EXPORT_PRESET_KEY,
+  watermarkEnabled: DEFAULT_WATERMARK_CONFIG.enabled,
+  watermarkText: DEFAULT_WATERMARK_CONFIG.text,
+  watermarkPosition: DEFAULT_WATERMARK_CONFIG.position,
 
   selectedTemplateId: templates[0].id,
 
@@ -318,6 +336,9 @@ export const useProjectStore = create<ProjectState>((set) => ({
       if (def.safeZonePlatform) patch.safeZonePlatform = def.safeZonePlatform;
       return patch;
     }),
+  setWatermarkEnabled: (watermarkEnabled) => set({ watermarkEnabled }),
+  setWatermarkText: (watermarkText) => set({ watermarkText }),
+  setWatermarkPosition: (watermarkPosition) => set({ watermarkPosition }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 
@@ -376,6 +397,16 @@ export function effectiveReactive(state: ProjectState): ReactiveMode {
   if (state.manualReactiveMode) return state.manualReactiveMode;
   const tpl = templates.find((t) => t.id === state.selectedTemplateId) ?? templates[0];
   return tpl.reactiveMode ?? 'none';
+}
+
+export function effectiveWatermark(
+  state: ProjectState,
+): import('../../shared/watermark').WatermarkConfig {
+  return {
+    enabled: state.watermarkEnabled,
+    text: state.watermarkText,
+    position: state.watermarkPosition,
+  };
 }
 
 export function effectiveFx(state: ProjectState): FxPreset {

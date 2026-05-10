@@ -9,6 +9,7 @@ import type {
 } from '../../shared/types';
 import type { FontKey } from '../../shared/fonts';
 import { getExportPreset, type ExportPresetKey } from '../../shared/exportPresets';
+import type { WatermarkConfig } from '../../shared/watermark';
 import { templates } from '../templates/templates';
 import { SAMPLE_PRESETS } from '../samples/samplePresets';
 import type { BatchItem } from '../store/projectStore';
@@ -86,6 +87,8 @@ export interface BatchInputs {
   /** Active export preset. Drives encode params + filename suffix for
    *  every batch item. Omitted = pipeline defaults. */
   exportPresetKey?: ExportPresetKey;
+  /** Watermark / branding config applied to every batch item's overlays. */
+  watermark?: WatermarkConfig | null;
 }
 
 export interface BatchHooks {
@@ -151,6 +154,7 @@ export async function runBatch(
             karaokeEnabled: inputs.karaokeEnabled,
             lyricPositionOverride: inputs.lyricPositionOverride ?? null,
             fontKey: inputs.fontKey ?? null,
+            watermark: inputs.watermark ?? null,
           });
 
       const presetDef = getExportPreset(inputs.exportPresetKey);

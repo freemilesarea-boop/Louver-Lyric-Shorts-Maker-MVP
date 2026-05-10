@@ -46,6 +46,8 @@ interface Props {
   lyricPositionOverride: LyricPosition | null;
   /** User pick from FontSelector. Null = follow per-language default. */
   fontKey: FontKey | null;
+  /** Watermark / branding overlay config. Null = no watermark in preview. */
+  watermark?: import('../../shared/watermark').WatermarkConfig | null;
   forcedChunkIndex?: number | null;
 }
 
@@ -201,6 +203,7 @@ export default function LivePreview(props: Props): JSX.Element {
       karaoke,
       lyricPositionOverride: props.lyricPositionOverride,
       fontKey: props.fontKey,
+      watermark: props.watermark ?? null,
     });
     // Safe-zone overlay — preview-only. Painted last so it sits on top
     // of every other layer, including grain.
@@ -225,6 +228,7 @@ export default function LivePreview(props: Props): JSX.Element {
     props.safeZone,
     props.lyricPositionOverride,
     props.fontKey,
+    props.watermark,
   ]);
 
   return (

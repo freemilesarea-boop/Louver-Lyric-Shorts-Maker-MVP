@@ -17,6 +17,7 @@
     "demo-pack": "tsx scripts/demo-render-pack.ts",
     "test:fonts": "tsx scripts/test-fonts.ts",
     "test:export-presets": "tsx scripts/test-export-presets.ts",
+    "test:watermark": "tsx scripts/test-watermark.ts",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
