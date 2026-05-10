@@ -1,5 +1,6 @@
 import type {
   AmplitudeCurve,
+  CustomPreset,
   LanguageCode,
   LyricLine,
   OverlayPng,
@@ -12,12 +13,13 @@ import { api } from './api';
 import { buildOverlays as defaultBuildOverlays } from './overlays';
 import { prettyErrorMessage } from '../../shared/errors';
 
-export type BatchPlanKind = 'sample-presets' | 'all-templates';
+export type BatchPlanKind = 'sample-presets' | 'all-templates' | 'custom-presets';
 
 /** Build the queue of BatchItems for a chosen plan. */
 export function buildBatchPlan(
   kind: BatchPlanKind,
   detectedLanguage: LanguageCode,
+  customPresets: CustomPreset[] = [],
 ): BatchItem[] {
   if (kind === 'sample-presets') {
     return SAMPLE_PRESETS.map((p): BatchItem => ({
@@ -32,7 +34,20 @@ export function buildBatchPlan(
       status: 'pending',
     }));
   }
-  // All templates — fall back to each template's defaults for motion /
+  if (kind === 'custom-presets') {
+    return customPresets.map((p): BatchItem => ({
+      id: p.id,
+      label: p.name,
+      templateId: p.templateId,
+      motionPreset: p.motionPreset,
+      animationPreset: p.animationPreset,
+      reactiveMode: p.reactiveMode,
+      fxPreset: p.cinematicFxPreset,
+      language: p.language ?? detectedLanguage,
+      status: 'pending',
+    }));
+  }
+  // 'all-templates' — fall back to each template's defaults for motion /
   // animation / reactive / FX. Language follows the user's detected
   // language so the right font stack is picked.
   return templates.map((t: Template): BatchItem => ({

@@ -23,6 +23,7 @@ import TemplateGallery from '../components/TemplateGallery';
 import SamplePresetPicker from '../components/SamplePresetPicker';
 import TranscribeButton from '../components/TranscribeButton';
 import BatchPicker from '../components/BatchPicker';
+import CustomPresetPanel from '../components/CustomPresetPanel';
 import { prettyErrorMessage } from '../../shared/errors';
 
 export default function EditorScreen(): JSX.Element {
@@ -254,6 +255,10 @@ export default function EditorScreen(): JSX.Element {
 
         <Section title="줄별 타임라인">
           <LyricTimeline audioRef={audioRef} />
+        </Section>
+
+        <Section title="내 프리셋">
+          <CustomPresetPanel />
         </Section>
 
         <Section title="배치 출력">

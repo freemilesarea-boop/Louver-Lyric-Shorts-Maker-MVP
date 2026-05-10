@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   useProjectStore,
   type BatchItem,
@@ -12,6 +12,7 @@ import {
 import { prettyErrorMessage } from '../../shared/errors';
 import { templates } from '../templates/templates';
 import { SAMPLE_PRESETS } from '../samples/samplePresets';
+import type { CustomPreset } from '../../shared/types';
 
 /**
  * Two-button batch picker. Each click:
@@ -26,6 +27,22 @@ import { SAMPLE_PRESETS } from '../samples/samplePresets';
 export default function BatchPicker(): JSX.Element {
   const state = useProjectStore();
   const [error, setError] = useState<string | null>(null);
+  const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
+
+  // Refresh custom presets so the third button knows whether to enable.
+  // This re-runs on every mount of the editor — light enough to do unconditionally.
+  useEffect(() => {
+    let cancelled = false;
+    api()
+      .listCustomPresets()
+      .then((list) => {
+        if (!cancelled) setCustomPresets(list);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const start = async (kind: BatchPlanKind) => {
     setError(null);
@@ -51,7 +68,28 @@ export default function BatchPicker(): JSX.Element {
       state.setOutputDir(outputDir);
     }
 
-    const items: BatchItem[] = buildBatchPlan(kind, state.detectedLanguage);
+    // For 'custom-presets' fetch the latest list at click-time so the user
+    // doesn't render against a stale snapshot if they just saved one.
+    let presetsForPlan = customPresets;
+    if (kind === 'custom-presets') {
+      try {
+        presetsForPlan = await api().listCustomPresets();
+        setCustomPresets(presetsForPlan);
+      } catch (e) {
+        setError(prettyErrorMessage(e));
+        return;
+      }
+      if (presetsForPlan.length === 0) {
+        setError('저장된 프리셋이 없어요. "내 프리셋"에서 먼저 저장해주세요.');
+        return;
+      }
+    }
+
+    const items: BatchItem[] = buildBatchPlan(
+      kind,
+      state.detectedLanguage,
+      presetsForPlan,
+    );
     state.startBatch(items);
     state.setLastError(null);
     state.setIsRendering(true);
@@ -113,6 +151,7 @@ export default function BatchPicker(): JSX.Element {
 
   const sampleCount = SAMPLE_PRESETS.length;
   const templateCount = templates.length;
+  const customCount = customPresets.length;
 
   const btnCls =
     'flex flex-1 flex-col items-start gap-1 rounded-lg border border-white/10 ' +
@@ -122,7 +161,7 @@ export default function BatchPicker(): JSX.Element {
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="grid gap-2 sm:grid-cols-2">
         <button
           onClick={() => start('sample-presets')}
           disabled={state.isRendering}
@@ -141,6 +180,24 @@ export default function BatchPicker(): JSX.Element {
           <div className="text-sm font-semibold">🎨 전체 템플릿 {templateCount}개로 생성</div>
           <div className="text-[11px] text-white/60">
             10개 템플릿 × 각 템플릿 기본 motion / animation / reactive / FX
+          </div>
+        </button>
+        <button
+          onClick={() => start('custom-presets')}
+          disabled={state.isRendering || customCount === 0}
+          className={btnCls + ' sm:col-span-2'}
+          title={customCount === 0 ? '저장된 프리셋이 없어요.' : undefined}
+        >
+          <div className="text-sm font-semibold">
+            ⭐ 내 프리셋 {customCount}개로 생성
+            {customCount === 0 && (
+              <span className="ml-2 text-[10px] font-normal text-white/40">
+                (저장된 프리셋 없음)
+              </span>
+            )}
+          </div>
+          <div className="text-[11px] text-white/60">
+            "내 프리셋" 섹션에 저장한 모든 사용자 스타일을 한 번에 출력
           </div>
         </button>
       </div>

@@ -47,6 +47,24 @@ export type ReactiveMode =
   | 'cinematic_bloom'
   | 'neon_pulse';
 
+/**
+ * User-saved style preset. Stored as plain JSON in Electron's userData dir
+ * — see src/main/storage/customPresets.ts. `language: null` means "follow
+ * detected language" rather than overriding it.
+ */
+export interface CustomPreset {
+  id: string;
+  name: string;
+  templateId: string;
+  motionPreset: MotionPreset;
+  animationPreset: AnimationPreset;
+  reactiveMode: ReactiveMode;
+  cinematicFxPreset: FxPreset;
+  language: LanguageCode | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Cinematic FX preset — bundles grain / vignette / aberration / bloom etc. */
 export type FxPreset =
   | 'none'

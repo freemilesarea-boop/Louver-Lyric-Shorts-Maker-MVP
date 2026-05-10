@@ -1,0 +1,201 @@
+import { app } from 'electron';
+import { promises as fs } from 'node:fs';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type {
+  AnimationPreset,
+  CustomPreset,
+  FxPreset,
+  LanguageCode,
+  MotionPreset,
+  ReactiveMode,
+} from '../../shared/types';
+
+/**
+ * Custom preset persistence.
+ *
+ * Storage: `<app userData>/custom-presets.json`. Atomic write via temp +
+ * rename so a crash mid-save can't corrupt the file. Reads are
+ * fault-tolerant — if the file is missing, empty, or malformed we log and
+ * return an empty list rather than crash.
+ */
+
+const FILE_NAME = 'custom-presets.json';
+const FILE_VERSION = 1;
+
+interface StoredFile {
+  version: number;
+  presets: CustomPreset[];
+}
+
+const EMPTY: StoredFile = { version: FILE_VERSION, presets: [] };
+
+function filePath(): string {
+  // app.getPath('userData') is OS-correct (e.g. ~/Library/Application Support/<app>
+  // on macOS, %APPDATA%\<app> on Windows).
+  return join(app.getPath('userData'), FILE_NAME);
+}
+
+export async function listPresets(): Promise<CustomPreset[]> {
+  const file = await readFile();
+  return [...file.presets].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export interface SaveInput {
+  name: string;
+  templateId: string;
+  motionPreset: MotionPreset;
+  animationPreset: AnimationPreset;
+  reactiveMode: ReactiveMode;
+  cinematicFxPreset: FxPreset;
+  language: LanguageCode | null;
+  /**
+   * If a preset with the same (case-insensitive) name already exists and
+   * `forceOverwrite` is false, the IPC reply includes `conflict: true` so
+   * the UI can confirm before overwriting.
+   */
+  forceOverwrite?: boolean;
+}
+
+export interface SaveResult {
+  ok: boolean;
+  preset?: CustomPreset;
+  conflict?: boolean;
+  existingId?: string;
+  error?: string;
+}
+
+export async function savePreset(input: SaveInput): Promise<SaveResult> {
+  const trimmed = (input.name ?? '').trim();
+  if (trimmed.length === 0) {
+    return { ok: false, error: '프리셋 이름을 입력해주세요.' };
+  }
+  if (trimmed.length > 60) {
+    return { ok: false, error: '프리셋 이름은 60자 이하로 입력해주세요.' };
+  }
+
+  const file = await readFile();
+  const lower = trimmed.toLowerCase();
+  const existing = file.presets.find((p) => p.name.trim().toLowerCase() === lower);
+
+  if (existing && !input.forceOverwrite) {
+    return { ok: false, conflict: true, existingId: existing.id };
+  }
+
+  const now = Date.now();
+  let next: CustomPreset;
+  if (existing) {
+    next = {
+      ...existing,
+      name: trimmed,
+      templateId: input.templateId,
+      motionPreset: input.motionPreset,
+      animationPreset: input.animationPreset,
+      reactiveMode: input.reactiveMode,
+      cinematicFxPreset: input.cinematicFxPreset,
+      language: input.language,
+      updatedAt: now,
+    };
+    file.presets = file.presets.map((p) => (p.id === existing.id ? next : p));
+  } else {
+    next = {
+      id: randomUUID(),
+      name: trimmed,
+      templateId: input.templateId,
+      motionPreset: input.motionPreset,
+      animationPreset: input.animationPreset,
+      reactiveMode: input.reactiveMode,
+      cinematicFxPreset: input.cinematicFxPreset,
+      language: input.language,
+      createdAt: now,
+      updatedAt: now,
+    };
+    file.presets = [...file.presets, next];
+  }
+
+  await writeFile(file);
+  return { ok: true, preset: next };
+}
+
+export async function deletePreset(id: string): Promise<{ ok: boolean }> {
+  const file = await readFile();
+  const filtered = file.presets.filter((p) => p.id !== id);
+  if (filtered.length === file.presets.length) {
+    // Not found — still return ok so the UI doesn't get stuck on a stale entry.
+    return { ok: true };
+  }
+  file.presets = filtered;
+  await writeFile(file);
+  return { ok: true };
+}
+
+/* --------------------------- file IO + recovery --------------------------- */
+
+async function readFile(): Promise<StoredFile> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath(), 'utf8');
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { ...EMPTY, presets: [] };
+    }
+    // eslint-disable-next-line no-console
+    console.warn('[custom-presets] read failed, falling back to empty:', e);
+    return { ...EMPTY, presets: [] };
+  }
+  if (!raw.trim()) return { ...EMPTY, presets: [] };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    // Corrupt JSON — back up the bad file so the user can inspect it later,
+    // then return empty so the app keeps working.
+    // eslint-disable-next-line no-console
+    console.warn('[custom-presets] JSON parse failed, archiving and recovering:', e);
+    try {
+      await fs.rename(filePath(), `${filePath()}.corrupt.${Date.now()}.json`);
+    } catch {
+      // ignore — best effort
+    }
+    return { ...EMPTY, presets: [] };
+  }
+
+  return validateAndCoerce(parsed);
+}
+
+function validateAndCoerce(input: unknown): StoredFile {
+  if (!input || typeof input !== 'object') return { ...EMPTY, presets: [] };
+  const obj = input as { version?: unknown; presets?: unknown };
+  const presets: CustomPreset[] = Array.isArray(obj.presets)
+    ? obj.presets.filter(isCustomPreset)
+    : [];
+  return { version: FILE_VERSION, presets };
+}
+
+function isCustomPreset(x: unknown): x is CustomPreset {
+  if (!x || typeof x !== 'object') return false;
+  const p = x as Record<string, unknown>;
+  return (
+    typeof p.id === 'string' &&
+    typeof p.name === 'string' &&
+    typeof p.templateId === 'string' &&
+    typeof p.motionPreset === 'string' &&
+    typeof p.animationPreset === 'string' &&
+    typeof p.reactiveMode === 'string' &&
+    typeof p.cinematicFxPreset === 'string' &&
+    (p.language === null || typeof p.language === 'string') &&
+    typeof p.createdAt === 'number' &&
+    typeof p.updatedAt === 'number'
+  );
+}
+
+async function writeFile(file: StoredFile): Promise<void> {
+  const out = filePath();
+  await fs.mkdir(join(out, '..'), { recursive: true });
+  // Atomic write: write to a temp sibling then rename.
+  const tmp = `${out}.tmp.${process.pid}.${Date.now()}`;
+  const body = JSON.stringify({ version: FILE_VERSION, presets: file.presets }, null, 2);
+  await fs.writeFile(tmp, body, 'utf8');
+  await fs.rename(tmp, out);
+}

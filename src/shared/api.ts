@@ -1,12 +1,36 @@
 import type {
   AmplitudeCurve,
+  AnimationPreset,
   AudioMeta,
+  CustomPreset,
+  FxPreset,
   LanguageCode,
   LyricLine,
+  MotionPreset,
+  ReactiveMode,
   RenderProgress,
   RenderRequest,
   RenderResult,
 } from './types';
+
+export interface CustomPresetSaveInput {
+  name: string;
+  templateId: string;
+  motionPreset: MotionPreset;
+  animationPreset: AnimationPreset;
+  reactiveMode: ReactiveMode;
+  cinematicFxPreset: FxPreset;
+  language: LanguageCode | null;
+  forceOverwrite?: boolean;
+}
+
+export interface CustomPresetSaveReply {
+  ok: boolean;
+  preset?: CustomPreset;
+  conflict?: boolean;
+  existingId?: string;
+  error?: string;
+}
 
 export interface TranscribeRequest {
   audioPath: string;
@@ -38,6 +62,10 @@ export interface LyricShortsAPI {
   whisperAvailable(): Promise<WhisperAvailability>;
   transcribe(req: TranscribeRequest): Promise<TranscribeReply>;
   cancelTranscribe(): Promise<boolean>;
+
+  listCustomPresets(): Promise<CustomPreset[]>;
+  saveCustomPreset(input: CustomPresetSaveInput): Promise<CustomPresetSaveReply>;
+  deleteCustomPreset(id: string): Promise<{ ok: boolean }>;
   readAsDataURL(path: string): Promise<string>;
   fileExists(path: string): Promise<boolean>;
   basename(path: string): Promise<string>;
