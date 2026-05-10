@@ -162,6 +162,64 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 6. **Whisper bundling 옵션**: 초보 사용자용으로 whisper.cpp tiny 모델
    (~75MB) 번들 옵션 고려 — 앱 크기 trade-off.
 
+### Dist build 결과 (Phase 4-1)
+
+설치 파일 빌드는 `npm run dist:linux` / `dist:mac` / `dist:win` 으로
+실행. **각 타깃은 해당 OS 호스트에서 빌드해야 한다** — 자세한 이유는
+아래 "ffmpeg-static 호스트 의존성".
+
+| 타깃 | 명령 | 산출물 | 결과 |
+| --- | --- | --- | --- |
+| Linux AppImage | `npm run dist:linux` | `release/Lyric Shorts Maker-0.1.0.AppImage` (210 MB) | ✅ 본 환경에서 네이티브 빌드 성공. asar 외부에 ffmpeg/ffprobe unpacked → 실행 가능 검증. |
+| macOS dmg | `npm run dist:mac` (macOS 호스트 필요) | `release/Lyric Shorts Maker-0.1.0.dmg` | ⚠️ Linux 에서 cross-build 시 `dmg-license` (macOS 전용 dep) 누락 — macOS 호스트 필수. |
+| Windows nsis | `npm run dist:win` (Windows 호스트 또는 Wine 필요) | `release/Lyric Shorts Maker Setup 0.1.0.exe` | ⚠️ Linux 에서 cross-build 시 `wine` 필요 (rcedit/signApp). |
+
+#### ffmpeg-static 호스트 의존성
+
+`ffmpeg-static` / `ffprobe-static` 는 **`npm install` 시점에 호스트 OS
+용 바이너리를 다운로드** 한다 (`process.platform` 기준). electron-builder
+의 cross-build 는 이 바이너리를 그대로 패키지에 넣기 때문에:
+
+- macOS host 에서 mac/win/linux 빌드 → 모두 darwin ffmpeg 만 들어감 ❌
+- Windows host 에서 빌드 → 모두 win32 ffmpeg ❌
+- Linux host 에서 mac/win 빌드 → linux ffmpeg ❌
+
+**해결책 (택 1)**:
+
+1. **Per-host CI**: GitHub Actions 매트릭스 (`macos-latest`,
+   `windows-latest`, `ubuntu-latest`) 각자 자기 OS 의 dist 빌드.
+   `npm install` 이 자동으로 맞는 ffmpeg 다운로드 → 가장 안전.
+2. **수동 binary swap**: 빌드 직전 ffmpeg-static 폴더에 타깃 OS 의
+   바이너리를 손으로 복사 (대신 ffprobe-static 폴더 구조도 동기화 필요).
+
+본 리포 의 `npm run dist:*` 스크립트는 옵션 1 의 호스트별 호출이 정상
+동작 한다는 것을 Linux AppImage 빌드로 확인했다 — asar unpack +
+ffmpeg/ffprobe 경로 처리 모두 정상.
+
+#### Phase 4-1 본 환경 검증
+
+- `npm run typecheck` ✅
+- `electron-vite build` ✅ (main 35 KB · preload 1.9 KB · renderer 391 KB)
+- `electron-builder --linux` ✅
+  - `release/linux-unpacked/resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg`
+    → ELF executable, `ffmpeg version 7.0.2-static` 정상 실행 확인
+  - DevTools 자동 오픈 없음 (코드에 `openDevTools()` 호출 없음)
+  - 출력 파일명 패턴 `lyric_short_<tag>_YYYYMMDD_HHMMSS.mp4`
+- `electron-builder --mac` 시도 → `dmg-license` 누락 (macOS host 필수,
+  예상된 결과)
+- `electron-builder --win` 시도 → `wine` 누락 (Windows host 또는 wine
+  필수, 예상된 결과)
+
+#### 배포 전 남은 위험
+
+1. **실제 macOS / Windows 호스트에서 dist 빌드 + 설치 + 렌더 확인 필요**
+   (본 환경은 Linux 만). 이 단계가 끝나기 전에는 dmg/exe 가 실 사용자
+   환경에서 동작한다는 보장 없음.
+2. macOS Apple Developer ID 서명 + notarization (Gatekeeper)
+3. Windows Authenticode 서명 (SmartScreen 경고 회피)
+4. 실제 아이콘 에셋 (현재 placeholder — 기본 Electron 로고로 대체됨)
+5. `electron-updater` 미설정 — 첫 배포 후 검토
+
 ## 우선순위 / 로드맵
 
 | Pri | 기능                                  | 상태       |
@@ -186,6 +244,8 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 6.8 | Safe Zone / 모바일 미리보기           | ✅ (3-6)   |
 | 6.9 | Auto Safe Position 추천               | ✅ (3-7)   |
 | 6.10| Hook Section 자동 추천 (amplitude)    | ✅ (3-8)   |
+| 6.99| Test packaging 준비                   | ✅ (3-9)   |
+| 7-1 | Dist build / installer test           | 🟡 Linux ✅ · mac·win 은 호스트별 (4-1) |
 | 7   | BPM detection / forced alignment      | ⬜ 다음 단계 |
 
 ### 1.5 변경 요약
