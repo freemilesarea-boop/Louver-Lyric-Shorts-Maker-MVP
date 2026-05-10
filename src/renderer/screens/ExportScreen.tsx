@@ -6,6 +6,7 @@ export default function ExportScreen(): JSX.Element {
   const isRendering = useProjectStore((s) => s.isRendering);
   const lastOutputPath = useProjectStore((s) => s.lastOutputPath);
   const lastError = useProjectStore((s) => s.lastError);
+  const lastTimings = useProjectStore((s) => s.lastRenderTimings);
   const setScreen = useProjectStore((s) => s.setScreen);
 
   const stage = progress?.stage ?? (isRendering ? 'preparing' : 'preparing');
@@ -55,6 +56,40 @@ export default function ExportScreen(): JSX.Element {
           <div className="mt-6 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
             <div className="font-semibold">완료!</div>
             <div className="mt-1 break-all font-mono text-xs">{lastOutputPath}</div>
+            {lastTimings && (
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-emerald-200/80">
+                <div>
+                  Total &nbsp;
+                  <span className="font-mono text-emerald-100">
+                    {(lastTimings.totalMs / 1000).toFixed(1)}s
+                  </span>
+                </div>
+                <div>
+                  ffmpeg &nbsp;
+                  <span className="font-mono text-emerald-100">
+                    {(lastTimings.ffmpegMs / 1000).toFixed(1)}s
+                  </span>
+                </div>
+                <div>
+                  Overlay bake &nbsp;
+                  <span className="font-mono text-emerald-100">
+                    {lastTimings.overlayMaterializeMs}ms
+                  </span>
+                </div>
+                <div>
+                  Keyframes &nbsp;
+                  <span className="font-mono text-emerald-100">
+                    {lastTimings.overlayCount}
+                  </span>
+                </div>
+                <div className="col-span-2">
+                  File size &nbsp;
+                  <span className="font-mono text-emerald-100">
+                    {(lastTimings.outputSizeBytes / 1024 / 1024).toFixed(2)} MB
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

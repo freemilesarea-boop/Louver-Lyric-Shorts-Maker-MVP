@@ -8,6 +8,7 @@ import type {
   MotionPreset,
   ReactiveMode,
   RenderProgress,
+  RenderTimings,
   Template,
 } from '../../shared/types';
 import { templates } from '../templates/templates';
@@ -60,6 +61,7 @@ interface ProjectState {
   outputDir: string | null;
   lastRenderProgress: RenderProgress | null;
   lastOutputPath: string | null;
+  lastRenderTimings: RenderTimings | null;
   isRendering: boolean;
   lastError: string | null;
 
@@ -88,6 +90,7 @@ interface ProjectState {
   setRenderProgress: (p: RenderProgress) => void;
   setIsRendering: (v: boolean) => void;
   setLastOutputPath: (p: string | null) => void;
+  setLastRenderTimings: (t: RenderTimings | null) => void;
   setLastError: (e: string | null) => void;
 }
 
@@ -167,6 +170,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   outputDir: null,
   lastRenderProgress: null,
   lastOutputPath: null,
+  lastRenderTimings: null,
   isRendering: false,
   lastError: null,
 
@@ -225,6 +229,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setRenderProgress: (lastRenderProgress) => set({ lastRenderProgress }),
   setIsRendering: (isRendering) => set({ isRendering }),
   setLastOutputPath: (lastOutputPath) => set({ lastOutputPath }),
+  setLastRenderTimings: (lastRenderTimings) => set({ lastRenderTimings }),
   setLastError: (lastError) => set({ lastError }),
 }));
 

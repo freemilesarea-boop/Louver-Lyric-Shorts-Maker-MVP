@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ffmpegPath } from './binaries';
 import { buildFilterGraph, type OverlayTiming } from './filters';
-import type { RenderRequest } from '../../shared/types';
+import type { RenderRequest, RenderTimings } from '../../shared/types';
 
 const TARGET_W = 1080;
 const TARGET_H = 1920;
@@ -12,6 +12,7 @@ const FPS = 30;
 
 export interface RenderOk {
   outputPath: string;
+  timings: RenderTimings;
 }
 
 /**
@@ -48,8 +49,10 @@ export async function runRender(
   await assertWritableDir(outDir);
 
   const tempDir = await fs.mkdtemp(join(tmpdir(), 'lyric-shorts-'));
+  const totalStart = Date.now();
   try {
     // 1. Materialize PNG overlays to disk so ffmpeg can read them as inputs.
+    const overlayMaterializeStart = Date.now();
     const overlayPaths: string[] = [];
     const overlays = req.overlays ?? [];
     for (let i = 0; i < overlays.length; i++) {
@@ -58,6 +61,7 @@ export async function runRender(
       await fs.writeFile(p, buf);
       overlayPaths.push(p);
     }
+    const overlayMaterializeMs = Date.now() - overlayMaterializeStart;
 
     // 2. Build filter graph. Inputs are: 0=image, 1=audio, 2..N=overlays.
     const overlayTimings: OverlayTiming[] = overlays.map((ov, i) => ({
@@ -101,8 +105,32 @@ export async function runRender(
     args.push('-progress', 'pipe:1');
     args.push(outputPath);
 
+    const ffmpegStart = Date.now();
     await runFfmpeg(args, req.durationSec, onProgress);
-    return { outputPath };
+    const ffmpegMs = Date.now() - ffmpegStart;
+
+    let outputSizeBytes = 0;
+    try {
+      outputSizeBytes = (await fs.stat(outputPath)).size;
+    } catch {
+      // Stat may fail if ffmpeg killed mid-write; fall back to 0.
+    }
+
+    const timings: RenderTimings = {
+      ffmpegMs,
+      overlayMaterializeMs,
+      totalMs: Date.now() - totalStart,
+      outputSizeBytes,
+      overlayCount: overlays.length,
+    };
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[render] done · overlays=${overlays.length} ` +
+        `(${overlayMaterializeMs}ms) · ffmpeg=${ffmpegMs}ms · total=${timings.totalMs}ms ` +
+        `· output=${(outputSizeBytes / 1024).toFixed(0)}KB`,
+    );
+    return { outputPath, timings };
   } finally {
     fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }

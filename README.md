@@ -112,8 +112,9 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
 | 4.7 | 가사 등장/퇴장 애니메이션             | ✅ (2-2)   |
 | 4.8 | 오디오 amplitude 리액티브             | ✅ (2-3)   |
 | 4.9 | 시네마틱 FX (grain/bloom/leak/...)    | ✅ (2-4)   |
-| 5   | Whisper 자동 가사 추출                | ⬜ 다음 단계 |
-| 6   | BPM detection / 단어별 하이라이트     | ⬜ 다음 단계 |
+| 5   | QA / 안정화 / 샘플 프리셋             | ✅ (2-5)   |
+| 6   | Whisper 자동 가사 추출                | ⬜ 다음 단계 |
+| 7   | BPM detection / 단어별 하이라이트     | ⬜ 다음 단계 |
 
 ### 1.5 변경 요약
 
@@ -163,6 +164,24 @@ npm run dist         # 현재 OS용 패키징 (electron-builder)
   EDM/glitch 회피, premium emotional 톤 유지. paintCinematicFx 는 scene
   renderer 의 마지막 레이어로 호출되어 모션·애니메이션·리액티브 모두 위에
   얹힘.
+- **QA · 안정화 · 샘플 프리셋 (2-5)**: 기능 추가 동결, 실사용 검증 라운드.
+  - 5개 샘플 프리셋 (`K-Ballad Emotional` / `English R&B Night` /
+    `Neon Drive Pop` / `Polaroid Love Song` / `VHS Indie Mood`) — 한 번에
+    template + motion + animation + reactive + FX + 권장 언어를 적용하는
+    원클릭 프리셋. Editor 상단에 SamplePresetPicker 로 노출.
+  - Editor 의 5개 스타일 셀렉터를 단일 "Style Controls" 섹션으로 묶어
+    학습 곡선 완화.
+  - `prettyErrorMessage()` (`src/shared/errors.ts`) 가 ffmpeg 원시 에러
+    (Permission denied / ENOSPC / Invalid data / SIGTERM 등)를 한국어
+    사용자 메시지로 매핑. main IPC 와 renderer 양쪽에서 모두 사용.
+  - `RenderTimings` 가 IPC 결과에 포함되어 ExportScreen 이 total / ffmpeg
+    / overlay bake / keyframe count / file size 표시.
+  - `MAX_OVERLAY_PNGS = 120` 안전 상한선 — 가사 줄이 25개 이상으로 많아
+    프로젝트된 키프레임이 ffmpeg 입력 한계를 넘을 때, 자동으로 애니메이션
+    keyframe fps 를 비례 축소. (정상 케이스에서는 영향 없음.)
+  - 종합 스모크 매트릭스 통과: 5 sample presets × 30s, 15s/30s 길이,
+    1:1·4:5·16:9·9:16 이미지, 1줄/25줄 극단 가사, 한글 파일명+공백 경로,
+    7가지 에러 매핑.
 - **안정성**:
   - 입력 파일 검증 (존재/사이즈/타입) + 친절한 에러 메시지
   - 출력 폴더 쓰기 권한 사전 체크

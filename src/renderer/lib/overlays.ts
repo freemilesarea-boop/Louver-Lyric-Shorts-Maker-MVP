@@ -10,6 +10,9 @@ import type {
 } from '../../shared/types';
 import { renderScene, SCENE_W, SCENE_H } from '../../shared/scene';
 import {
+  ANIMATION_KEYFRAME_FPS,
+  ENTER_SEC,
+  EXIT_SEC,
   REST_STATE,
   animationStateAt,
   isStaticAnimation,
@@ -62,14 +65,47 @@ export function sliceLyrics(lyrics: LyricLine[], durationSec: number): SlicedLyr
   }));
 }
 
+/**
+ * Hard ceiling on the number of overlay PNG inputs we feed to ffmpeg per
+ * render. Many `-loop 1 -framerate 30 -i ...` pairs balloon the filter
+ * graph and (depending on OS) exhaust file descriptors / hit ffmpeg's own
+ * input cap. Empirically 192+ inputs starts misbehaving on Linux x86_64.
+ *
+ * When the projected keyframe count exceeds this, we throttle the
+ * animation keyframe rate proportionally so the total stays under the cap.
+ * Per-line animation may look slightly steppier with many lines, but the
+ * render still completes successfully — far better than a hard failure.
+ */
+const MAX_OVERLAY_PNGS = 120;
+
+function computeEffectiveKeyframeFps(
+  animationPreset: BuildOpts['animationPreset'],
+  chunkCount: number,
+): number {
+  if (isStaticAnimation(animationPreset) || chunkCount === 0) {
+    return ANIMATION_KEYFRAME_FPS;
+  }
+  // Worst-case keyframes per chunk at full fps: enter + 1 hold + exit.
+  const perChunkFull =
+    Math.ceil(ENTER_SEC * ANIMATION_KEYFRAME_FPS) +
+    1 +
+    Math.ceil(EXIT_SEC * ANIMATION_KEYFRAME_FPS);
+  const projected = perChunkFull * chunkCount;
+  if (projected <= MAX_OVERLAY_PNGS) return ANIMATION_KEYFRAME_FPS;
+  // Scale fps to fit, with floor so animations don't fully degenerate.
+  const scaled = (ANIMATION_KEYFRAME_FPS * MAX_OVERLAY_PNGS) / projected;
+  return Math.max(2, Math.round(scaled * 10) / 10);
+}
+
 export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
   const out: OverlayPng[] = [];
   const chunks = sliceLyrics(opts.lyrics, opts.durationSec);
   const fxConfig = fxConfigForPreset(opts.fxPreset);
+  const keyframeFps = computeEffectiveKeyframeFps(opts.animationPreset, chunks.length);
 
   for (const chunk of chunks) {
     const chunkDur = Math.max(0, chunk.end - chunk.start);
-    const slots = planKeyframes(opts.animationPreset, chunkDur);
+    const slots = planKeyframes(opts.animationPreset, chunkDur, keyframeFps);
 
     for (const slot of slots) {
       const animState = isStaticAnimation(opts.animationPreset)

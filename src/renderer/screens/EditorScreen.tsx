@@ -20,6 +20,8 @@ import ReactiveSelector from '../components/ReactiveSelector';
 import CinematicFxSelector from '../components/CinematicFxSelector';
 import AudioRangeSelector from '../components/AudioRangeSelector';
 import TemplateGallery from '../components/TemplateGallery';
+import SamplePresetPicker from '../components/SamplePresetPicker';
+import { prettyErrorMessage } from '../../shared/errors';
 
 export default function EditorScreen(): JSX.Element {
   const state = useProjectStore();
@@ -152,11 +154,13 @@ export default function EditorScreen(): JSX.Element {
 
       if (!result.ok) {
         state.setIsRendering(false);
-        state.setLastError(result.error ?? 'Unknown render error');
+        state.setLastError(prettyErrorMessage(result.error ?? 'Unknown render error'));
+      } else if (result.timings) {
+        state.setLastRenderTimings(result.timings);
       }
     } catch (e) {
       state.setIsRendering(false);
-      state.setLastError(e instanceof Error ? e.message : String(e));
+      state.setLastError(prettyErrorMessage(e));
     }
   };
 
@@ -191,28 +195,32 @@ export default function EditorScreen(): JSX.Element {
 
       {/* Right column: controls */}
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1">
-        <Section title="템플릿">
-          <TemplateGallery />
+        <Section title="샘플 프리셋">
+          <SamplePresetPicker />
+        </Section>
+
+        <Section title="Style Controls">
+          <div className="space-y-4">
+            <SubControl label="Template">
+              <TemplateGallery />
+            </SubControl>
+            <SubControl label="Photo Motion">
+              <MotionSelector />
+            </SubControl>
+            <SubControl label="Lyric Animation">
+              <AnimationSelector />
+            </SubControl>
+            <SubControl label="Audio Reactive">
+              <ReactiveSelector />
+            </SubControl>
+            <SubControl label="Cinematic FX">
+              <CinematicFxSelector />
+            </SubControl>
+          </div>
         </Section>
 
         <Section title="언어">
           <LanguageSelector />
-        </Section>
-
-        <Section title="포토 모션">
-          <MotionSelector />
-        </Section>
-
-        <Section title="가사 애니메이션">
-          <AnimationSelector />
-        </Section>
-
-        <Section title="오디오 리액티브">
-          <ReactiveSelector />
-        </Section>
-
-        <Section title="시네마틱 FX">
-          <CinematicFxSelector />
         </Section>
 
         <Section title="오디오 구간">
@@ -293,5 +301,16 @@ function Section(props: { title: string; children: React.ReactNode }): JSX.Eleme
       </h2>
       {props.children}
     </section>
+  );
+}
+
+function SubControl(props: { label: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <div>
+      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+        {props.label}
+      </div>
+      {props.children}
+    </div>
   );
 }

@@ -134,6 +134,9 @@ export interface KeyframeSlot {
 export function planKeyframes(
   preset: AnimationPreset,
   chunkDurationSec: number,
+  /** Optional override of ANIMATION_KEYFRAME_FPS — used by the export
+   *  scheduler to throttle total keyframe count when there are many chunks. */
+  keyframeFpsOverride?: number,
 ): KeyframeSlot[] {
   if (chunkDurationSec <= 0) return [];
   if (isStaticAnimation(preset)) {
@@ -145,8 +148,9 @@ export function planKeyframes(
   const exitDur = Math.min(EXIT_SEC, chunkDurationSec / 3);
   const holdEnd = Math.max(enterDur, chunkDurationSec - exitDur);
 
-  const enterCount = Math.max(1, Math.ceil(enterDur * ANIMATION_KEYFRAME_FPS));
-  const exitCount = Math.max(1, Math.ceil(exitDur * ANIMATION_KEYFRAME_FPS));
+  const animFps = keyframeFpsOverride ?? ANIMATION_KEYFRAME_FPS;
+  const enterCount = Math.max(1, Math.ceil(enterDur * animFps));
+  const exitCount = Math.max(1, Math.ceil(exitDur * animFps));
 
   const slots: KeyframeSlot[] = [];
   // Enter keyframes — sample mid-window for visual smoothness.

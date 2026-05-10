@@ -178,4 +178,18 @@ export interface RenderResult {
   ok: boolean;
   outputPath?: string;
   error?: string;
+  timings?: RenderTimings;
+}
+
+export interface RenderTimings {
+  /** Wall time for ffmpeg child process. */
+  ffmpegMs: number;
+  /** Wall time materializing overlay PNGs to disk. */
+  overlayMaterializeMs: number;
+  /** Total wall time inside main-process renderer. */
+  totalMs: number;
+  /** Final output file size, bytes. */
+  outputSizeBytes: number;
+  /** Number of overlay PNGs the renderer baked. */
+  overlayCount: number;
 }

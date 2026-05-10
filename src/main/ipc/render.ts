@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { runRender, cancelActiveRender, RenderCancelled } from '../render/pipeline';
 import type { RenderRequest, RenderProgress, RenderResult } from '../../shared/types';
+import { prettyErrorMessage } from '../../shared/errors';
 
 export function registerRenderHandlers(
   ipcMain: IpcMain,
@@ -33,13 +34,16 @@ export function registerRenderHandlers(
       });
 
       send({ jobId, percent: 100, stage: 'done', outputPath: result.outputPath });
-      return { ok: true, outputPath: result.outputPath };
+      return { ok: true, outputPath: result.outputPath, timings: result.timings };
     } catch (err) {
       if (err instanceof RenderCancelled) {
         send({ jobId, percent: 0, stage: 'cancelled', message: err.message });
         return { ok: false, error: 'cancelled' };
       }
-      const message = err instanceof Error ? err.message : String(err);
+      // Translate the raw error to a user-friendly Korean message before
+      // sending it across IPC. The renderer also runs prettyErrorMessage as
+      // a defense-in-depth pass for any non-IPC errors.
+      const message = prettyErrorMessage(err);
       send({ jobId, percent: 0, stage: 'error', message });
       return { ok: false, error: message };
     }
