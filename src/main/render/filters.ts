@@ -135,21 +135,47 @@ export function buildFilterGraph(a: FilterArgs): string {
   // Skipped when the template ships a playerChrome — chrome has its own
   // progress bar inside the card (§6.5). Drawing both would put two
   // bars on screen at different y positions.
+  //
+  // Phase 5-5.1: ffmpeg 7.0.2's drawbox does NOT evaluate `w` expressions
+  // per-frame. The expression is computed at filter init (where t=0 →
+  // w=0, falling back to the "0 means full width" default), producing a
+  // static full-width bar. Verified via `-vf "drawbox=w=200*t..."` →
+  // ffmpeg logged `w:1080` at parse time and the rendered bar was full
+  // width regardless of t.
+  // Workaround: emit a series of stacked drawbox calls each gated by
+  // `enable=between(t,a,b)` for a time slice. Each slice has a fixed
+  // pre-computed width corresponding to that slice's progress fraction.
+  // 4fps step rate = 250ms per slice = visually smooth + low filter
+  // graph cost (e.g. 24 boxes for a 6s clip, 60 for 15s).
   if (t.progressBarStyle !== 'none' && !t.playerChrome) {
     const margin = 80;
     const barY = Math.round(H * 0.88);
     const fullW = W - margin * 2;
     const barH = t.progressBarStyle === 'thick' ? 10 : 6;
+    // Track background — full width, low alpha — drawn once.
     lines.push(
       `[${chainIn}]drawbox=x=${margin}:y=${barY}:w=${fullW}:h=${barH}:` +
-        `color=${ffmpegColor(t.lyricColor, 0.25)}:t=fill[track]`,
+        `color=${ffmpegColor(t.lyricColor, 0.25)}:thickness=fill[track]`,
     );
-    lines.push(
-      `[track]drawbox=x=${margin}:y=${barY}:` +
-        `w='min(${fullW},${fullW}*t/${a.durationSec})':h=${barH}:` +
-        `color=${ffmpegColor(t.lyricColor, 0.95)}:t=fill:replace=1[bar]`,
-    );
-    chainIn = 'bar';
+    chainIn = 'track';
+    // Stacked filled bars — one per 250ms slice. Each slice's width
+    // matches the END of that slice's progress so the bar appears to
+    // grow forward (not pop back).
+    const sliceSec = 0.25;
+    const slices = Math.max(1, Math.ceil(a.durationSec / sliceSec));
+    for (let i = 0; i < slices; i++) {
+      const tStart = i * sliceSec;
+      const tEnd = Math.min(a.durationSec, (i + 1) * sliceSec);
+      const ratio = Math.min(1, tEnd / a.durationSec);
+      const w = Math.max(1, Math.round(fullW * ratio));
+      const out = `pb${i}`;
+      lines.push(
+        `[${chainIn}]drawbox=x=${margin}:y=${barY}:w=${w}:h=${barH}:` +
+          `color=${ffmpegColor(t.lyricColor, 0.95)}:thickness=fill:` +
+          `enable='between(t,${tStart.toFixed(3)},${tEnd.toFixed(3)})'[${out}]`,
+      );
+      chainIn = out;
+    }
   }
 
   // --- 6) Play / pause icon (cheap triangle from drawboxes) ---
@@ -171,36 +197,48 @@ export function buildFilterGraph(a: FilterArgs): string {
     chainIn = 'ic3';
   }
 
-  // --- 6.5) Player-chrome progress bar — drawn here at video fps so the
-  //          bar moves smoothly. The PNG-baked chrome painter skips its
-  //          own progress bar in export mode (skipProgress=true), leaving
-  //          the geometry below as the only on-screen progress.
+  // --- 6.5) Player-chrome progress bar — same time-sliced approach as
+  //          §5 (see comment there for why drawbox-with-expression
+  //          doesn't work in ffmpeg 7.0.2).
+  //          Slices at 4fps = 250ms apart; each slice has a fixed width
+  //          and a fixed playhead-dot x. The PNG-baked chrome painter
+  //          skips its own progress bar in export mode (skipProgress=
+  //          true) so this is the only on-screen progress for player
+  //          chrome templates.
   if (t.playerChrome && a.playerProgressGeom) {
     const g = a.playerProgressGeom;
     const accent = t.lyricSubColor;
     const fg = t.lyricColor;
-    // Track + filled portion (uses `t/dur` expression so width updates
-    // every frame without any per-keyframe PNG cost).
+    // Track background — full width, low alpha — drawn once.
     lines.push(
       `[${chainIn}]drawbox=x=${g.x}:y=${g.y}:w=${g.w}:h=${g.h}:` +
-        `color=${ffmpegColor(fg, 0.18)}:t=fill[pc_track]`,
+        `color=${ffmpegColor(fg, 0.18)}:thickness=fill[pc_track]`,
     );
-    lines.push(
-      `[pc_track]drawbox=x=${g.x}:y=${g.y}:` +
-        `w='min(${g.w},${g.w}*t/${a.durationSec})':h=${g.h}:` +
-        `color=${ffmpegColor(accent, 0.95)}:t=fill:replace=1[pc_bar]`,
-    );
-    // Playhead dot — small circle approximated as a square that follows
-    // the bar's filled-end position. Width 2× bar height for visibility.
+    chainIn = 'pc_track';
+    // Stacked filled bars + dots, one per 250ms slice.
     const dotSize = Math.max(8, g.h * 3);
     const dotY = g.y + Math.round(g.h / 2 - dotSize / 2);
-    lines.push(
-      `[pc_bar]drawbox=` +
-        `x='${g.x}+${g.w}*t/${a.durationSec}-${dotSize / 2}':` +
-        `y=${dotY}:w=${dotSize}:h=${dotSize}:` +
-        `color=${ffmpegColor(fg, 1)}:t=fill:replace=1[pc_dot]`,
-    );
-    chainIn = 'pc_dot';
+    const sliceSec = 0.25;
+    const slices = Math.max(1, Math.ceil(a.durationSec / sliceSec));
+    for (let i = 0; i < slices; i++) {
+      const tStart = i * sliceSec;
+      const tEnd = Math.min(a.durationSec, (i + 1) * sliceSec);
+      const ratio = Math.min(1, tEnd / a.durationSec);
+      const w = Math.max(1, Math.round(g.w * ratio));
+      const dotX = Math.max(g.x, g.x + w - Math.round(dotSize / 2));
+      const enable = `enable='between(t,${tStart.toFixed(3)},${tEnd.toFixed(3)})'`;
+      const barOut = `pcb${i}`;
+      lines.push(
+        `[${chainIn}]drawbox=x=${g.x}:y=${g.y}:w=${w}:h=${g.h}:` +
+          `color=${ffmpegColor(accent, 0.95)}:thickness=fill:${enable}[${barOut}]`,
+      );
+      const dotOut = `pcd${i}`;
+      lines.push(
+        `[${barOut}]drawbox=x=${dotX}:y=${dotY}:w=${dotSize}:h=${dotSize}:` +
+          `color=${ffmpegColor(fg, 1)}:thickness=fill:${enable}[${dotOut}]`,
+      );
+      chainIn = dotOut;
+    }
   }
 
   // --- 7) Faux waveform ---

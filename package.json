@@ -20,6 +20,7 @@
     "test:watermark": "tsx scripts/test-watermark.ts",
     "test:rc-qa": "tsx scripts/rc-qa.ts",
     "test:template-cover": "tsx scripts/test-template-cover.ts",
+    "test:progress-motion": "tsx scripts/test-real-progress-motion.ts",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {

@@ -294,15 +294,22 @@ export default function LivePreview(props: Props): JSX.Element {
 }
 
 /**
- * Drag overlay — absolutely-positioned over the canvas, shows a labeled
- * handle for each draggable element at its current effective position.
- * Mousedown captures the element; mousemove maps client-pixel deltas
- * back to canvas-pixel coordinates (1080×1920) via the canvas's
- * bounding-rect ratio so positions persist correctly regardless of how
- * the canvas is CSS-scaled in the editor.
+ * Drag overlay — absolutely-positioned to exactly cover the canvas's
+ * client-rect. Tracks resize via ResizeObserver so handles stay aligned
+ * after window resize / sidebar collapse / browser zoom. Handles are
+ * intentionally large and high-contrast so they're easy to grab.
  *
- * Phase 5-5 supports lyric / meta / waveform. Adding more elements is a
- * matter of extending the LAYOUT_KEYS array + the LayoutOverrides type.
+ * Coordinate model: handles store their position in CANONICAL 1080×1920
+ * space; on render we map → CSS pixels via the live canvas rect; on
+ * mousemove we map deltas back from CSS pixels → canonical via the
+ * same rect. The mapping is symmetric so the round-trip stays stable.
+ *
+ * Phase 5-5.1 fix: previous version read the canvas rect once per
+ * render and never observed resize. If the canvas wasn't laid out at
+ * mount time the rect was zero → handles never appeared. Now we
+ * observe + restate the rect, and we render a giant placeholder handle
+ * even before the rect is known so the user always sees the toggle is
+ * active.
  */
 type LayoutKey = 'lyric' | 'meta' | 'waveform';
 
@@ -318,6 +325,26 @@ function DragOverlay(props: {
     point: { x: number; y: number } | undefined,
   ) => void;
 }): JSX.Element {
+  // Track the canvas's CSS box. Updates on mount, on every resize,
+  // and on window scroll so cross-pane absolute positioning stays
+  // accurate while the user is interacting.
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  useEffect(() => {
+    const canvas = props.canvasRef.current;
+    if (!canvas) return;
+    const update = () => setRect(canvas.getBoundingClientRect());
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(canvas);
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [props.canvasRef]);
+
   // Compute the effective position of each element in canonical 1080×1920
   // coordinates. Drag override wins; otherwise we derive from template.
   const lyricY = (() => {
@@ -350,21 +377,6 @@ function DragOverlay(props: {
     },
   };
 
-  // Convert canonical (canvasX, canvasY) to CSS-pixel offset within the
-  // overlay (which exactly tracks the canvas). The canvas CSS size is
-  // whatever the layout gave it; we read the live rect each time.
-  const toCss = (
-    canvasX: number,
-    canvasY: number,
-    rect: DOMRect,
-  ): { left: number; top: number } => ({
-    left: (canvasX / SCENE_W) * rect.width,
-    top: (canvasY / SCENE_H) * rect.height,
-  });
-
-  // Drag state lives in refs so we don't churn React renders during
-  // mousemove. The on-screen handle position updates via inline style
-  // by reading the latest layoutOverrides from props on each render.
   const draggingRef = useRef<{
     key: LayoutKey;
     rect: DOMRect;
@@ -374,24 +386,23 @@ function DragOverlay(props: {
     originY: number;
   } | null>(null);
 
-  const onMouseDown = (key: LayoutKey, e: React.MouseEvent) => {
+  const onPointerDown = (key: LayoutKey, e: React.PointerEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     const canvas = props.canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+    const live = canvas.getBoundingClientRect();
     draggingRef.current = {
       key,
-      rect,
+      rect: live,
       startX: e.clientX,
       startY: e.clientY,
       originX: positions[key].x,
       originY: positions[key].y,
     };
-    const onMove = (mv: MouseEvent) => {
+    const onMove = (mv: PointerEvent) => {
       const d = draggingRef.current;
       if (!d) return;
-      // Map client-pixel deltas to canonical 1080×1920 deltas using the
-      // current canvas CSS size — handles any window resize or zoom.
       const dxCanvas = ((mv.clientX - d.startX) / d.rect.width) * SCENE_W;
       const dyCanvas = ((mv.clientY - d.startY) / d.rect.height) * SCENE_H;
       props.onChange(d.key, {
@@ -401,11 +412,13 @@ function DragOverlay(props: {
     };
     const onUp = () => {
       draggingRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   };
 
   const handles: Array<{ key: LayoutKey; label: string; show: boolean }> = [
@@ -414,40 +427,56 @@ function DragOverlay(props: {
     { key: 'waveform', label: '웨이브폼', show: props.showWaveform },
   ];
 
-  // The overlay covers the same box as the canvas. We re-read the rect
-  // on every render so resizing the editor pane keeps handles aligned.
-  const canvas = props.canvasRef.current;
-  const rect = canvas?.getBoundingClientRect();
+  // Position the overlay box exactly on top of the canvas's client rect
+  // — using `position: fixed` so it's not affected by ancestor flex /
+  // overflow. We anchor in viewport coordinates derived from the
+  // canvas rect, which we keep current via ResizeObserver.
+  const overlayStyle: React.CSSProperties = rect
+    ? {
+        position: 'fixed',
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        pointerEvents: 'none',
+        zIndex: 30,
+      }
+    : { position: 'fixed', left: 0, top: 0, width: 0, height: 0 };
 
   return (
-    <div
-      className="pointer-events-none absolute inset-0 flex items-center justify-center"
-      style={{ aspectRatio: '9 / 16' }}
-    >
-      <div
-        className="relative h-full"
-        style={{ aspectRatio: '9 / 16' }}
-      >
-        {rect &&
-          handles
-            .filter((h) => h.show)
-            .map((h) => {
-              const p = positions[h.key];
-              const css = toCss(p.x, p.y, rect);
-              return (
-                <button
-                  key={h.key}
-                  onMouseDown={(e) => onMouseDown(h.key, e)}
-                  onDoubleClick={() => props.onChange(h.key, undefined)}
-                  title="드래그해서 위치 옮기기 · 더블클릭으로 초기화"
-                  className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 select-none rounded-full border border-accent bg-accent/30 px-2 py-0.5 text-[10px] font-semibold text-white shadow-md backdrop-blur-sm hover:bg-accent/50"
-                  style={{ left: css.left, top: css.top, cursor: 'move' }}
-                >
-                  ⋮⋮ {h.label}
-                </button>
-              );
-            })}
-      </div>
+    <div style={overlayStyle}>
+      {rect &&
+        handles
+          .filter((h) => h.show)
+          .map((h) => {
+            const p = positions[h.key];
+            const left = (p.x / SCENE_W) * rect.width;
+            const top = (p.y / SCENE_H) * rect.height;
+            return (
+              <button
+                key={h.key}
+                onPointerDown={(e) => onPointerDown(h.key, e)}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  props.onChange(h.key, undefined);
+                }}
+                title="드래그해서 위치 옮기기 · 더블클릭하면 기본값으로 돌아갑니다"
+                className="absolute select-none rounded-full border-2 border-yellow-300 bg-yellow-400/85 px-3 py-1 text-[12px] font-bold text-black shadow-lg hover:bg-yellow-300"
+                style={{
+                  left,
+                  top,
+                  transform: 'translate(-50%, -50%)',
+                  pointerEvents: 'auto',
+                  cursor: 'grab',
+                  touchAction: 'none',
+                  minWidth: 64,
+                  minHeight: 28,
+                }}
+              >
+                ⋮⋮ {h.label}
+              </button>
+            );
+          })}
     </div>
   );
 }
