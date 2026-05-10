@@ -25,6 +25,7 @@ import TranscribeButton from '../components/TranscribeButton';
 import BatchPicker from '../components/BatchPicker';
 import CustomPresetPanel from '../components/CustomPresetPanel';
 import SafeZoneToggle from '../components/SafeZoneToggle';
+import HookSuggester from '../components/HookSuggester';
 import { prettyErrorMessage } from '../../shared/errors';
 
 export default function EditorScreen(): JSX.Element {
@@ -247,17 +248,20 @@ export default function EditorScreen(): JSX.Element {
         </Section>
 
         <Section title="오디오 구간">
-          <AudioRangeSelector
-            audioPath={state.audioPath}
-            audioDurationSec={state.audioDurationSec}
-            startSec={state.startSec}
-            durationSec={state.durationSec}
-            onChangeStart={state.setStartSec}
-            onChangeDuration={state.setDurationSec}
-            audioDataUrl={state.audioDataUrl}
-            audioRef={audioRef}
-            onPreviewPlay={onPreviewPlay}
-          />
+          <div className="space-y-3">
+            <AudioRangeSelector
+              audioPath={state.audioPath}
+              audioDurationSec={state.audioDurationSec}
+              startSec={state.startSec}
+              durationSec={state.durationSec}
+              onChangeStart={state.setStartSec}
+              onChangeDuration={state.setDurationSec}
+              audioDataUrl={state.audioDataUrl}
+              audioRef={audioRef}
+              onPreviewPlay={onPreviewPlay}
+            />
+            <HookSuggester />
+          </div>
         </Section>
 
         <Section title="가사">
