@@ -191,22 +191,23 @@ export default function LivePreview(props: Props): JSX.Element {
       // element is attached to the DOM, which we never do.
       v.load();
 
-      // Phase 5-8.1: 5s watchdog (was 10s). If canplay hasn't fired
-      // by then the codec is almost certainly the problem — we surface
-      // a concrete error and the EditorScreen's MediaValidationBanner
-      // (forceShow=true) appears with the detected codec + a
-      // one-click transcode. Probe `v.readyState` directly (canonical
-      // source of truth) instead of the stale React `photo` closure.
+      // Phase 5-8.5: 10s watchdog (per user spec). Some genuinely
+      // valid sources take a few seconds to negotiate the first
+      // canplay event, especially when the moov atom is at the end
+      // and Chromium has to re-fetch from a tail Range. 5s was
+      // catching false positives. Probe `v.readyState` directly
+      // (canonical source of truth) instead of the stale React
+      // `photo` closure.
       const watchdog = window.setTimeout(() => {
         if (cancelled) return;
         debugSnapshot('watchdog');
         if (v.readyState < 3 /* HAVE_FUTURE_DATA */) {
           setVideoError(
-            '영상 로딩이 5초 안에 시작되지 않았어요. 코덱 호환성 문제일 가능성이 높습니다. 아래 "변환하기"를 눌러보세요.',
+            '영상 로딩이 10초 안에 시작되지 않았어요. 코덱 호환성 문제일 가능성이 높습니다. 오른쪽 안내의 "변환하기"를 눌러보세요.',
           );
           props.onVideoUnsupported?.();
         }
-      }, 5000);
+      }, 10000);
 
       return () => {
         cancelled = true;

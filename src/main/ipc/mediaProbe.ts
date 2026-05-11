@@ -95,81 +95,94 @@ export function isSupportedForPreview(probe: MediaProbe): SupportVerdict {
 
 /**
  * Build the ffmpeg argv that transcodes an arbitrary input into a
- * preview-friendly MP4. Phase 5-8.4 made this much more conservative
- * after the user reported that even ostensibly-supported h264/yuv420p
- * sources still failed Chromium decode after our previous transcode:
+ * Shorts-canvas MP4 the Electron <video> element accepts without
+ * pre-roll quirks.
  *
- *   - `-map 0:v:0`              pick exactly one video stream (no
- *                               leftover audio / subtitle / metadata
- *                               streams that some Chromium builds choke
- *                               on)
- *   - `scale=... pad=1080:1920` normalize to 1080×1920 with aspect
- *                               preserved (no crop). Anything taller or
- *                               wider gets letterboxed to fit; smaller
- *                               sources are upscaled to fill. Result:
- *                               the output is ALWAYS the exact
- *                               dimensions Chromium has the easiest
- *                               time decoding for our app's 9:16 canvas.
- *   - `setsar=1`                fixed sample aspect ratio. Phone cameras
- *                               sometimes ship SAR ≠ 1 which decoder
- *                               backends interpret inconsistently.
- *   - `format=yuv420p`          force 8-bit yuv420p inside the filter
- *                               graph so 10-bit / yuv422p10le / yuv444p
- *                               sources can't sneak through.
- *   - `-c:v libx264`            software encoder bundled with
- *                               ffmpeg-static; always available.
- *   - `-profile:v baseline`     widest decoder support. No CABAC, no
- *                               B-frames; pre-2020 phones can decode it
- *                               and Chromium baseline support is
- *                               bulletproof.
- *   - `-level 4.0`              max 1920×1080 @ 30fps — but for 9:16
- *                               portrait the macroblock count (1080×
- *                               1920 = 8160 MB) sits right at the L4.0
- *                               cap so this is still the right level.
- *   - `-preset fast -crf 22`    good visual / encode-time tradeoff for
- *                               a single transcode-then-preview pass.
- *   - `-movflags +faststart`    moves the moov atom to the front so
- *                               Chromium can begin decoding before the
- *                               whole file has been fetched. The
- *                               single biggest fix for "h264 file but
- *                               still won't play" symptoms.
- *   - `-an`                     drop audio. The user picks their own
- *                               audio file; we never want the source's
- *                               audio along for the ride (HE-AAC, EAC3,
- *                               etc.).
+ * Phase 5-8.5 — overhauled to the user's explicit spec after Phase
+ * 5-8.4's baseline/no-audio combo still tripped some Chromium decode
+ * paths. Highlights:
+ *
+ *   - `scale=1080:1920:force_original_aspect_ratio=increase,
+ *      crop=1080:1920`     fill the canvas (visible crop only on
+ *                          aspect mismatch; for 9:16 sources this is
+ *                          a no-op trim)
+ *   - `fps=30`             pin a fixed frame rate so the muxer always
+ *                          writes a clean timebase
+ *   - `format=yuv420p`     8-bit hard requirement inside the filter
+ *   - `-c:v libx264 -profile:v main -level 4.0 -preset veryfast`
+ *                          main profile has better quality at the
+ *                          same bitrate than baseline AND is just as
+ *                          widely supported by Chromium decoders
+ *   - `-pix_fmt yuv420p`   belt + suspenders alongside the filter
+ *   - `-movflags +faststart`
+ *                          moov atom at the front — the single
+ *                          biggest fix for "h264 file but won't play"
+ *   - `-c:a aac -b:a 192k -ar 48000 -ac 2`
+ *                          force AAC stereo 48kHz. Some Chromium
+ *                          builds get confused by MP4s with audio
+ *                          stream codec mismatches; standardizing
+ *                          ducks the issue.
+ *
+ * Silent inputs (GIF, video-only MP4): when `hasAudio` is false the
+ * caller MUST prepend `-f lavfi -i anullsrc=channel_layout=stereo:
+ * sample_rate=48000` and remap audio from input 1. We expose that as
+ * a separate helper so the caller can introspect both branches.
  */
-export function recommendedTranscodeArgs(
-  srcPath: string,
-  destPath: string,
-): string[] {
-  return [
-    '-y',
-    '-i',
-    srcPath,
+export interface BuildTranscodeArgsOpts {
+  srcPath: string;
+  destPath: string;
+  /** Whether the source has at least one audio stream. Drives the
+   *  anullsrc fallback below. */
+  hasAudio: boolean;
+}
+
+export function recommendedTranscodeArgs(opts: BuildTranscodeArgsOpts): string[] {
+  const args: string[] = ['-y', '-i', opts.srcPath];
+  if (!opts.hasAudio) {
+    // Generate silent AAC-shaped audio. anullsrc itself is infinite;
+    // -shortest below caps at video duration. Chromium decoders behave
+    // more predictably when an MP4 has BOTH video + audio streams.
+    args.push(
+      '-f',
+      'lavfi',
+      '-i',
+      'anullsrc=channel_layout=stereo:sample_rate=48000',
+    );
+  }
+  args.push(
     '-map',
     '0:v:0',
+    '-map',
+    opts.hasAudio ? '0:a:0' : '1:a:0',
     '-vf',
-    'scale=w=1080:h=1920:force_original_aspect_ratio=decrease,' +
-      'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,' +
-      'setsar=1,' +
+    'scale=1080:1920:force_original_aspect_ratio=increase,' +
+      'crop=1080:1920,' +
+      'fps=30,' +
       'format=yuv420p',
     '-c:v',
     'libx264',
+    '-preset',
+    'veryfast',
     '-profile:v',
-    'baseline',
+    'main',
     '-level',
     '4.0',
-    '-preset',
-    'fast',
-    '-crf',
-    '22',
     '-pix_fmt',
     'yuv420p',
     '-movflags',
     '+faststart',
-    '-an',
-    destPath,
-  ];
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
+    '-ar',
+    '48000',
+    '-ac',
+    '2',
+    '-shortest',
+    opts.destPath,
+  );
+  return args;
 }
 
 /**

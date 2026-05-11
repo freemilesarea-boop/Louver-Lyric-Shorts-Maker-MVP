@@ -120,23 +120,53 @@ export function registerFileHandlers(
         join(app.getPath('temp'), 'lyric-shorts-transcode-'),
       );
       const outputPath = join(tmpRoot, 'converted-main-media.mp4');
-      const args = recommendedTranscodeArgs(srcPath, outputPath);
+
+      // Phase 5-8.5 — probe the source first so we know whether to
+      // attach an anullsrc audio track. Silent inputs (GIF, audio-less
+      // MP4) get a synthetic AAC stereo track so the output always
+      // has both video and audio streams; some Chromium decode paths
+      // get confused by audio-less MP4s mid-playback.
+      let srcProbe: MediaProbe;
+      try {
+        srcProbe = await probeMedia(srcPath, ffprobePath);
+      } catch (err) {
+        return {
+          ok: false,
+          error: `원본 파일을 읽을 수 없어요: ${prettyErrorMessage(err)}`,
+        };
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        '[transcode] source probe',
+        'codec=', srcProbe.videoCodec,
+        'pix=', srcProbe.pixelFormat,
+        'wxh=', `${srcProbe.width}x${srcProbe.height}`,
+        'dur=', srcProbe.durationSec,
+        'audio=', srcProbe.hasAudio,
+      );
+
+      const args = recommendedTranscodeArgs({
+        srcPath,
+        destPath: outputPath,
+        hasAudio: srcProbe.hasAudio,
+      });
+      // eslint-disable-next-line no-console
+      console.log('[transcode] ffmpeg', args.join(' '));
       try {
         await runFfmpegTranscode(args, getWin);
 
-        // Phase 5-8.2/8.4 — 3-step output verification. The user saw
-        // [transcode:done] but the file still failed Chromium decode
-        // with ERR_UNEXPECTED, so "ffmpeg returned 0" is not enough.
+        // Phase 5-8.5 — 4-step output verification with explicit
+        // logging. "ffmpeg exit 0" is not enough: the user has shown
+        // multiple times that a structurally valid MP4 can still
+        // produce MEDIA_ELEMENT_ERROR code 4 in Chromium. Every gate
+        // returns a Korean reason the banner can render verbatim.
         //
         //   (a) file exists + size > 100 KB
-        //       libx264 with our scale+pad produces ~50 KB/s minimum
-        //       even for trivial sources; anything smaller means the
-        //       encoder bailed early.
         //   (b) ffprobe shows h264 / yuv420p / w*h > 0 / duration > 0
-        //   (c) frame-extraction smoke: ffmpeg -ss 0 -frames:v 1 -f null
-        //       proves the file is actually decodable, not just
-        //       parseable. Some failure modes produce a structurally
-        //       valid MP4 whose first I-frame is corrupt.
+        //   (c) explicit field-by-field assertions matching the user
+        //       spec (codec_name, pix_fmt, width, height, duration)
+        //   (d) frame-extraction smoke (ffmpeg -frames:v 1 -f null -)
+        //       proves the I-frame is decodable, not just parseable.
         let stat;
         try {
           stat = await fs.stat(outputPath);
@@ -150,14 +180,47 @@ export function registerFileHandlers(
           };
         }
         const probe = await probeMedia(outputPath, ffprobePath);
+        // eslint-disable-next-line no-console
+        console.log(
+          '[transcode] output probe',
+          'size=', stat.size,
+          'codec=', probe.videoCodec,
+          'pix=', probe.pixelFormat,
+          'wxh=', `${probe.width}x${probe.height}`,
+          'dur=', probe.durationSec,
+          'audio=', probe.hasAudio,
+        );
+        // Field-by-field gate. Each field has a concrete reason so the
+        // banner can tell the user exactly which check failed.
+        if (probe.videoCodec !== 'h264') {
+          return {
+            ok: false,
+            error: `변환 결과의 비디오 코덱이 h264가 아니에요 (${probe.videoCodec ?? 'no-video'}).`,
+          };
+        }
+        if (probe.pixelFormat !== 'yuv420p') {
+          return {
+            ok: false,
+            error: `변환 결과의 픽셀 포맷이 yuv420p가 아니에요 (${probe.pixelFormat ?? 'no-pixfmt'}).`,
+          };
+        }
+        if (probe.width <= 0 || probe.height <= 0) {
+          return {
+            ok: false,
+            error: `변환 결과의 해상도가 0이에요 (${probe.width}x${probe.height}).`,
+          };
+        }
+        if (!Number.isFinite(probe.durationSec) || probe.durationSec <= 0) {
+          return {
+            ok: false,
+            error: `변환 결과의 재생 길이를 확인할 수 없어요 (${probe.durationSec}).`,
+          };
+        }
         const verdict = isSupportedForPreview(probe);
         if (!verdict.supported) {
           return {
             ok: false,
-            error:
-              `변환된 파일이 여전히 미리보기에서 지원되지 않아요 ` +
-              `(${probe.videoCodec ?? 'no-video'} · ${probe.pixelFormat ?? 'no-pixfmt'}). ` +
-              `원본 파일이 손상되었을 수 있어요. 자세한 사유: ${verdict.reason}`,
+            error: `변환 결과가 미리보기에서 지원되지 않아요. ${verdict.reason}`,
           };
         }
         const frameOk = await canDecodeFirstFrame(outputPath);
@@ -167,6 +230,8 @@ export function registerFileHandlers(
             error: '변환된 파일에서 첫 프레임을 디코드할 수 없었어요. 원본이 손상되었을 가능성이 있어요.',
           };
         }
+        // eslint-disable-next-line no-console
+        console.log('[transcode] verification passed → handing back to renderer');
         return { ok: true, outputPath };
       } catch (err) {
         return { ok: false, error: prettyErrorMessage(err) };

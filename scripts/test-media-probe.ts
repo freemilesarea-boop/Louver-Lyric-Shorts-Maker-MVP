@@ -196,24 +196,33 @@ async function main(): Promise<void> {
     );
 
     // === 4. Transcode argv actually produces a supported file ===
+    // Phase 5-8.5 — argv signature changed to BuildTranscodeArgsOpts.
+    // The video-only branch (hasAudio=false) attaches an anullsrc
+    // input; the with-audio branch uses the source's audio stream.
     const transcoded = join(work, 'transcoded.mp4');
-    const args = recommendedTranscodeArgs(hevcFile, transcoded);
+    const args = recommendedTranscodeArgs({
+      srcPath: hevcFile,
+      destPath: transcoded,
+      hasAudio: false, // hevc fixture above is video-only
+    });
     ok('transcode argv ends in destPath', args[args.length - 1] === transcoded);
-    ok('transcode argv drops audio (-an)', args.includes('-an'));
-    ok('transcode argv forces yuv420p', args.includes('-pix_fmt') && args.includes('yuv420p'));
-    // Phase 5-8.4 — pin the conservative args.
-    ok('transcode argv has -map 0:v:0', args.includes('-map') && args.includes('0:v:0'));
-    ok('transcode argv has baseline profile', args.includes('-profile:v') && args.includes('baseline'));
+    ok('transcode argv has -map 0:v:0', /-map\s+0:v:0/.test(args.join(' ')));
+    ok('transcode argv has main profile', args.includes('-profile:v') && args.includes('main'));
     ok('transcode argv has level 4.0', args.includes('-level') && args.includes('4.0'));
     ok('transcode argv has +faststart', args.includes('-movflags') && args.includes('+faststart'));
+    ok('transcode argv has AAC stereo 48kHz', args.includes('-c:a') && args.includes('aac') && args.includes('48000') && args.includes('2'));
+    ok('transcode argv has -shortest', args.includes('-shortest'));
     const vfIdx = args.indexOf('-vf');
     const vf = vfIdx >= 0 ? args[vfIdx + 1] : '';
-    ok('transcode -vf pads to 1080x1920', /pad=1080:1920/.test(vf));
-    ok('transcode -vf sets sar=1', /setsar=1/.test(vf));
-    ok('transcode -vf force_original_aspect_ratio=decrease (no crop)', /force_original_aspect_ratio=decrease/.test(vf));
+    ok('transcode -vf scales to 1080x1920', /scale=1080:1920/.test(vf));
+    ok('transcode -vf crops to 1080x1920', /crop=1080:1920/.test(vf));
+    ok('transcode -vf pins fps=30', /fps=30/.test(vf));
+    ok('transcode -vf format=yuv420p', /format=yuv420p/.test(vf));
+    // Silent input → anullsrc must be the second input.
+    ok('silent input → anullsrc lavfi audio attached', args.includes('anullsrc=channel_layout=stereo:sample_rate=48000'));
 
     const tr = await run(FFMPEG, args);
-    ok('ffmpeg accepts transcode argv', tr.code === 0, `code=${tr.code}`);
+    ok('ffmpeg accepts transcode argv (silent input branch)', tr.code === 0, `code=${tr.code}`);
     const transProbe = await probeMedia(transcoded, FFPROBE);
     ok(
       'transcoded file → h264',
@@ -231,8 +240,9 @@ async function main(): Promise<void> {
       `${transProbe.width}x${transProbe.height}`,
     );
     ok(
-      'transcoded file → no audio',
-      !transProbe.hasAudio,
+      'transcoded file → AAC audio attached (anullsrc)',
+      transProbe.audioCodec === 'aac' && transProbe.hasAudio,
+      `codec=${transProbe.audioCodec}`,
     );
     ok(
       'transcoded file → supported for preview',
@@ -253,16 +263,40 @@ async function main(): Promise<void> {
       `code=${frameTest.code}`,
     );
 
-    // Output is a non-trivial size (encoder didn't bail). 10 KB is
-    // the floor for any meaningful libx264 output even at the 1-second
-    // fixture length used here; the production gate in
-    // transcodeMainMedia is stricter (100 KB) because real user files
-    // are seconds-to-minutes long.
+    // Output is a non-trivial size.
     const transStat = await fs.stat(transcoded);
     ok(
       'transcoded file > 10 KB (encoder did not bail on 1s fixture)',
       transStat.size > 10 * 1024,
       `size=${transStat.size}`,
+    );
+
+    // === Phase 5-8.5 — with-audio branch (source HAS audio) ===
+    const audioSrc = join(work, 'src-with-audio.mp4');
+    const audioBuild = await run(FFMPEG, [
+      '-y',
+      '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=10:duration=1',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
+      '-c:v', 'libx264', '-preset', 'ultrafast',
+      '-c:a', 'aac',
+      '-shortest',
+      audioSrc,
+    ]);
+    ok('with-audio fixture built', audioBuild.code === 0);
+    const transcodedAudio = join(work, 'transcoded-with-audio.mp4');
+    const argsWithAudio = recommendedTranscodeArgs({
+      srcPath: audioSrc,
+      destPath: transcodedAudio,
+      hasAudio: true,
+    });
+    ok('with-audio argv → no anullsrc (source has audio)', !argsWithAudio.includes('anullsrc=channel_layout=stereo:sample_rate=48000'));
+    ok('with-audio argv → -map 0:a:0 (source audio)', argsWithAudio.includes('0:a:0'));
+    const trWithAudio = await run(FFMPEG, argsWithAudio);
+    ok('ffmpeg accepts transcode argv (with-audio branch)', trWithAudio.code === 0, `code=${trWithAudio.code}`);
+    const audioProbe = await probeMedia(transcodedAudio, FFPROBE);
+    ok(
+      'with-audio transcode → AAC audio retained',
+      audioProbe.audioCodec === 'aac' && audioProbe.hasAudio,
     );
 
     // === 4b. Banner convert-button visibility — Phase 5-8.2 regression pin ===

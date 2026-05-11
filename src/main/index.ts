@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, shell, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron';
 import { join } from 'node:path';
 import { registerFileHandlers } from './ipc/files';
 import { registerRenderHandlers } from './ipc/render';
-import { handleMediaRequest } from './ipc/mediaProtocol';
+import { mediaUrlToFileUrl } from './ipc/mediaUrl';
 
 const isDev = !app.isPackaged;
 
@@ -62,15 +62,23 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Stream local files for the renderer's <video>/<img>/<audio> elements.
   //
-  // Phase 5-8 — explicit Range support. The previous
-  // `net.fetch(file://)` indirection returned the whole file as a 200
-  // body, which Chromium's video decoder rejected for seekable MP4
-  // (the user's "영상 로딩 중..." hang). handleMediaRequest now parses
-  // the Range header and streams the requested byte slice with the
-  // proper 206 Partial Content headers — same shape an HTTP server
-  // would emit. Non-Range requests still get the full file but with
-  // Accept-Ranges so the decoder knows it can seek next.
-  protocol.handle('media', (request) => handleMediaRequest(request));
+  // Phase 5-8.5 — REVERT to net.fetch(file://). The Phase 5-8 → 5-8.4
+  // hand-rolled Range handlers (Readable.toWeb stream first, then a
+  // buffered fd.read variant) both repro'd `net::ERR_UNEXPECTED` in
+  // the user's real Electron run, even though the synthetic
+  // smoke test (test:media-protocol) passed all 42 assertions. The
+  // discrepancy was almost certainly some Buffer/Response interop
+  // quirk specific to Electron's `protocol.handle` bridge that the
+  // node-side smoke can't see. net.fetch with file:// URLs uses
+  // Electron's own well-tested file streamer that already supports
+  // Range correctly — let the framework do it. The "영상 로딩 중..."
+  // hang the original Phase 5-8 thought it was fixing was actually
+  // resolved by the LivePreview canplay-vs-loadedmetadata fix in
+  // 5-8.1, not by the protocol rewrite. The protocol layer was
+  // never the bug.
+  protocol.handle('media', (request) =>
+    net.fetch(mediaUrlToFileUrl(request.url)),
+  );
 
   registerFileHandlers(ipcMain, () => mainWindow);
   registerRenderHandlers(ipcMain, () => mainWindow);
