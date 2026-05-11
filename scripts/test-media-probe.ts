@@ -27,6 +27,7 @@ import {
   probeMedia,
   recommendedTranscodeArgs,
 } from '../src/main/ipc/mediaProbe';
+import { shouldShowConvert } from '../src/renderer/components/mediaValidationLogic';
 
 const FFMPEG = (ffmpegPath as unknown as string) || 'ffmpeg';
 const FFPROBE = (ffprobeStatic as { path?: string }).path || 'ffprobe';
@@ -221,6 +222,32 @@ async function main(): Promise<void> {
     ok(
       'transcoded file → supported for preview',
       isSupportedForPreview(transProbe).supported,
+    );
+
+    // === 4b. Banner convert-button visibility — Phase 5-8.2 regression pin ===
+    // User report: 1920x3414 h264/yuv420p file. ffprobe says supported,
+    // Chromium runtime errors out. Previously the banner suppressed the
+    // convert button because reply.supported was true. shouldShowConvert
+    // now treats parent forceShow as authoritative.
+    ok(
+      'probe-says-unsupported + no force → button shown',
+      shouldShowConvert({ probeSupported: false, forceShow: false }),
+    );
+    ok(
+      'probe-says-supported + no force → button hidden (preview will work)',
+      !shouldShowConvert({ probeSupported: true, forceShow: false }),
+    );
+    ok(
+      'probe-says-supported + forceShow=true → button STILL shown (Chromium overrides probe)',
+      shouldShowConvert({ probeSupported: true, forceShow: true }),
+    );
+    ok(
+      'probe-pending + forceShow=true → button shown immediately',
+      shouldShowConvert({ probeSupported: null, forceShow: true }),
+    );
+    ok(
+      'probe-pending + no force → button hidden until probe resolves',
+      !shouldShowConvert({ probeSupported: null, forceShow: false }),
     );
 
     // === 5. URL encoding handling (spaced + Korean + special chars) ===

@@ -123,6 +123,22 @@ export function registerFileHandlers(
       const args = recommendedTranscodeArgs(srcPath, outputPath);
       try {
         await runFfmpegTranscode(args, getWin);
+        // Phase 5-8.2 — verify the OUTPUT actually probes as
+        // preview-friendly before reporting success. This catches the
+        // pathological case where ffmpeg returns 0 but the produced
+        // file has zero video streams (corrupted source) or somehow
+        // ends up with an unsupported codec/pixfmt anyway.
+        const probe = await probeMedia(outputPath, ffprobePath);
+        const verdict = isSupportedForPreview(probe);
+        if (!verdict.supported) {
+          return {
+            ok: false,
+            error:
+              `변환된 파일이 여전히 미리보기에서 지원되지 않아요 ` +
+              `(${probe.videoCodec ?? 'no-video'} · ${probe.pixelFormat ?? 'no-pixfmt'}). ` +
+              `원본 파일이 손상되었을 수 있어요. 자세한 사유: ${verdict.reason}`,
+          };
+        }
         return { ok: true, outputPath };
       } catch (err) {
         return { ok: false, error: prettyErrorMessage(err) };
