@@ -24,6 +24,7 @@
     "test:media-loading": "tsx scripts/test-media-loading.ts",
     "test:whisper-bundle": "tsx scripts/test-whisper-bundle.ts",
     "test:display-toggles": "tsx scripts/test-display-toggles.ts",
+    "whisper:compare": "tsx scripts/whisper-language-compare.ts",
     "test:media-protocol": "tsx scripts/test-media-protocol.ts",
     "test:media-probe": "tsx scripts/test-media-probe.ts",
     "test:video-export": "tsx scripts/test-video-export.ts",
