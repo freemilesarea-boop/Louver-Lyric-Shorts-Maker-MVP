@@ -155,6 +155,7 @@ export default function EditorScreen(): JSX.Element {
       const presetDef = getExportPreset(state.exportPresetKey);
       const result = await api().startRender({
         imagePath: state.imagePath,
+        mainMediaKind: state.mainMediaKind,
         backgroundImagePath: state.backgroundImagePath,
         audioPath: state.audioPath,
         lyrics: state.parsedLyrics,

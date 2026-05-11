@@ -21,8 +21,20 @@ export default function StartScreen(): JSX.Element {
     try {
       const path = await api().pickImage();
       if (!path) return;
+      // Phase 5-6: file picker now accepts gif + video extensions too.
+      // We detect the kind from the lowercase extension and stash it in
+      // the store so preview + export branch on it. Phase 5-7 will wire
+      // up the full video render path; for now mp4/mov/webm/m4v go
+      // through the GIF branch (ffmpeg -stream_loop -1) as a stop-gap.
+      const ext = path.toLowerCase().split('.').pop() ?? '';
+      const kind =
+        ext === 'gif'
+          ? 'gif'
+          : ['mp4', 'mov', 'm4v', 'webm'].includes(ext)
+            ? 'video'
+            : 'image';
       const dataUrl = await api().readAsDataURL(path);
-      setImage(path, dataUrl);
+      setImage(path, dataUrl, kind);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -64,7 +76,7 @@ export default function StartScreen(): JSX.Element {
       <div className="w-full max-w-3xl">
         <h1 className="text-3xl font-bold tracking-tight">새 프로젝트 시작</h1>
         <p className="mt-2 text-sm text-white/60">
-          메인 사진과 오디오 1개를 선택하면 9:16 세로 영상이 만들어져요.
+          메인 사진/영상/GIF와 오디오 1개를 선택하면 9:16 세로 영상이 만들어져요.
           배경 사진을 따로 고를 수도 있어요 (선택사항).
         </p>
 
@@ -74,8 +86,8 @@ export default function StartScreen(): JSX.Element {
 
         <div className="mt-6 grid grid-cols-3 gap-4">
           <UploadCard
-            label="메인 사진"
-            sub="화면 중앙에 크게 보이는 사진"
+            label="메인 사진/영상"
+            sub="화면 중앙에 보이는 사진, GIF, 또는 영상"
             onClick={onPickImage}
             preview={
               imageDataUrl ? (

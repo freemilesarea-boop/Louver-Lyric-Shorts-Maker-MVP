@@ -71,6 +71,9 @@ export function buildBatchPlan(
 
 export interface BatchInputs {
   imagePath: string;
+  /** Phase 5-6: kind of main media. Forwarded to startRender so the
+   *  ffmpeg pipeline branches on still vs animated input. */
+  mainMediaKind?: import('../../shared/types').MediaKind;
   audioPath: string;
   lyrics: LyricLine[];
   startSec: number;
@@ -170,6 +173,7 @@ export async function runBatch(
       const presetDef = getExportPreset(inputs.exportPresetKey);
       const result = await api().startRender({
         imagePath: inputs.imagePath,
+        mainMediaKind: inputs.mainMediaKind,
         backgroundImagePath: inputs.backgroundImagePath ?? null,
         audioPath: inputs.audioPath,
         lyrics: inputs.lyrics,

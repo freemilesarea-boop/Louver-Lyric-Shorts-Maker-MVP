@@ -53,9 +53,15 @@ export interface BatchItem {
 interface ProjectState {
   screen: Screen;
 
-  /** Main media (the user's primary photo). Phase 5-3: image only. */
+  /** Main media (the user's primary photo / gif / video). The path
+   *  field is named `imagePath` for backwards-compat — see
+   *  `mainMediaKind` for what's actually in there. */
   imagePath: string | null;
   imageDataUrl: string | null;
+  /** Phase 5-6: kind of the main media. Drives how preview + export
+   *  feed it to ffmpeg/canvas. Defaults to 'image' for legacy/empty
+   *  state; populated by the file picker based on extension. */
+  mainMediaKind: import('../../shared/types').MediaKind;
   /** Optional background media. When null the main image doubles as the
    *  background (legacy behavior). When set, renderScene + ffmpeg use this
    *  as the blurred backdrop and `imagePath` as the foreground card. */
@@ -155,7 +161,11 @@ interface ProjectState {
   batchFinishedAt: number | null;
 
   setScreen: (s: Screen) => void;
-  setImage: (p: string | null, dataUrl?: string | null) => void;
+  setImage: (
+    p: string | null,
+    dataUrl?: string | null,
+    kind?: import('../../shared/types').MediaKind,
+  ) => void;
   setBackgroundImage: (p: string | null, dataUrl?: string | null) => void;
   setAudio: (p: string | null, dataUrl?: string | null, durationSec?: number) => void;
   setStartSec: (s: number) => void;
@@ -259,6 +269,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   screen: 'start',
   imagePath: null,
   imageDataUrl: null,
+  mainMediaKind: 'image',
   backgroundImagePath: null,
   backgroundImageDataUrl: null,
   audioPath: null,
@@ -311,8 +322,12 @@ export const useProjectStore = create<ProjectState>((set) => ({
   batchFinishedAt: null,
 
   setScreen: (screen) => set({ screen }),
-  setImage: (imagePath, imageDataUrl = null) =>
-    set({ imagePath, imageDataUrl: imageDataUrl ?? null }),
+  setImage: (imagePath, imageDataUrl = null, kind) =>
+    set({
+      imagePath,
+      imageDataUrl: imageDataUrl ?? null,
+      mainMediaKind: kind ?? 'image',
+    }),
   setBackgroundImage: (backgroundImagePath, backgroundImageDataUrl = null) =>
     set({
       backgroundImagePath,

@@ -104,7 +104,40 @@ export async function runRender(
     // 3. Compose ffmpeg argv. Args are passed as an array (no shell), so spaces
     //    and Korean characters in paths are handled safely on Windows/macOS.
     const args: string[] = ['-y'];
-    args.push('-loop', '1', '-framerate', String(FPS), '-i', req.imagePath);
+    // Phase 5-6: main media input branches on kind.
+    //   - 'image'  → still input, `-loop 1 -framerate N` so the still
+    //                stretches to fill the output duration.
+    //   - 'gif' / 'video' → animated source. Apply optional source-time
+    //                trim (`-ss start` BEFORE `-i` for fast seek, with
+    //                `-t length` AFTER) and `-stream_loop -1` so a
+    //                source shorter than the output keeps looping. The
+    //                pipeline's final `-t req.durationSec` caps total
+    //                output length so we never run past the user's
+    //                selected clip length.
+    const mediaKind = req.mainMediaKind ?? 'image';
+    if (mediaKind === 'image') {
+      args.push('-loop', '1', '-framerate', String(FPS), '-i', req.imagePath);
+    } else {
+      // For gif/video, `-stream_loop -1` BEFORE `-i` loops the demuxed
+      // packets indefinitely. Source-time trim (sourceStartSec /
+      // sourceEndSec) optionally narrows the window the user wants
+      // from the file before looping kicks in.
+      args.push('-stream_loop', '-1');
+      if (
+        req.mainMediaSourceStartSec != null &&
+        req.mainMediaSourceStartSec > 0
+      ) {
+        args.push('-ss', String(req.mainMediaSourceStartSec));
+      }
+      if (req.mainMediaSourceEndSec != null && req.mainMediaSourceStartSec != null) {
+        const len = Math.max(
+          0.1,
+          req.mainMediaSourceEndSec - req.mainMediaSourceStartSec,
+        );
+        args.push('-t', String(len));
+      }
+      args.push('-i', req.imagePath);
+    }
     args.push(
       '-ss', String(Math.max(0, req.startSec)),
       '-t', String(req.durationSec),

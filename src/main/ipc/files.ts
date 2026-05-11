@@ -21,19 +21,33 @@ import { loadBundledFonts } from '../storage/fontFiles';
 import type { AudioMeta, LanguageCode, LyricLine } from '../../shared/types';
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp'];
+// Phase 5-6: GIF supported now (treated as a short looping video stream
+// by ffmpeg). Video extensions (mp4/mov/m4v/webm) are reserved here so
+// the file picker already accepts them; the actual video render path
+// lands in Phase 5-7.
+const GIF_EXTS = ['gif'];
+const VIDEO_EXTS = ['mp4', 'mov', 'm4v', 'webm'];
+const MAIN_MEDIA_EXTS = [...IMAGE_EXTS, ...GIF_EXTS, ...VIDEO_EXTS];
 const AUDIO_EXTS = ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'];
 
 export function registerFileHandlers(
   ipcMain: IpcMain,
   getWin: () => BrowserWindow | null,
 ): void {
+  // Renamed conceptually to "main media" — accepts images, gifs, and
+  // (Phase 5-7) videos. IPC channel name kept as 'files:pickImage' for
+  // backward compat with the preload bridge.
   ipcMain.handle('files:pickImage', async () => {
     const win = getWin();
     if (!win) return null;
     const res = await dialog.showOpenDialog(win, {
-      title: 'Select an image',
+      title: '메인 사진 / 영상 선택',
       properties: ['openFile'],
-      filters: [{ name: 'Images', extensions: IMAGE_EXTS }],
+      filters: [
+        { name: '사진 / 영상 / GIF', extensions: MAIN_MEDIA_EXTS },
+        { name: '사진만', extensions: IMAGE_EXTS },
+        { name: 'GIF / 영상', extensions: [...GIF_EXTS, ...VIDEO_EXTS] },
+      ],
     });
     return res.canceled ? null : res.filePaths[0];
   });

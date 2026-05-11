@@ -99,6 +99,7 @@ export default function BatchPicker(): JSX.Element {
       items,
       {
         imagePath: state.imagePath,
+        mainMediaKind: state.mainMediaKind,
         backgroundImagePath: state.backgroundImagePath,
         audioPath: state.audioPath,
         lyrics: state.parsedLyrics,

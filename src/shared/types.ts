@@ -226,6 +226,33 @@ export interface StyleOverrides {
 export const EMPTY_STYLE_OVERRIDES: StyleOverrides = {};
 
 /**
+ * Kind of main media the user uploaded. Phase 5-6 ships image + gif;
+ * video (mp4/mov/webm/m4v) defers to Phase 5-7. The type already has a
+ * 'video' slot so the renderer can branch on it without re-typing.
+ */
+export type MediaKind = 'image' | 'gif' | 'video';
+
+/**
+ * Main media — replaces the legacy single `imagePath` field. The kind
+ * tells the renderer how to feed it into ffmpeg (still image needs
+ * `-loop 1 -framerate N`, video/gif needs `-stream_loop -1` with a
+ * trim window).
+ */
+export interface MainMedia {
+  path: string;
+  kind: MediaKind;
+  /** Source-time trim start (within the file itself, not the output
+   *  clip). Video/gif only; null for still images. */
+  sourceStartSec?: number;
+  /** Source-time trim end. Same constraints as sourceStartSec. */
+  sourceEndSec?: number;
+  /** When true (default for video/gif), the source loops to fill the
+   *  output duration if the source is shorter. When false, the last
+   *  frame freezes for the remainder. */
+  loop?: boolean;
+}
+
+/**
  * Per-element absolute position override in canonical 1080×1920 space.
  * Each layoutOverrides field is independently optional. When set, the
  * scene painter uses these coordinates as the element's CENTER (or top-
@@ -278,15 +305,30 @@ export interface OverlayPng {
 
 export interface RenderRequest {
   /**
-   * Main media path. Required. The user's primary photo — drawn as the
-   * centered foreground card and (when no `backgroundImagePath` is given)
-   * also as the blurred backdrop. Phase 5-3 keeps this image-only; video /
-   * GIF support lands in Phase 5-4.
+   * Main media path. Required. The user's primary photo / animated gif /
+   * (Phase 5-7) video. Drawn as the centered foreground card and (when
+   * no `backgroundImagePath` is given) also as the blurred backdrop.
    *
    * Field name kept as `imagePath` for backwards compatibility with the
-   * existing IPC + custom presets.
+   * existing IPC + custom presets. See `mainMediaKind` for how the
+   * pipeline should feed this to ffmpeg.
    */
   imagePath: string;
+  /**
+   * Phase 5-6: kind of main media. When omitted the pipeline treats it
+   * as 'image' (the v1 behavior). 'gif' = use ffmpeg gif demuxer with
+   * `-stream_loop -1` so the gif loops to fill the output duration.
+   * 'video' = same loop strategy but with `-ss / -t` trimming, deferred
+   * to Phase 5-7.
+   */
+  mainMediaKind?: MediaKind;
+  /** Source-time trim start for video/gif. Ignored for images. */
+  mainMediaSourceStartSec?: number;
+  /** Source-time trim end for video/gif. Ignored for images. */
+  mainMediaSourceEndSec?: number;
+  /** Whether the source loops to fill the output duration (default true
+   *  for video/gif). */
+  mainMediaLoop?: boolean;
   /**
    * Optional separate background. When set, this image is the blurred
    * cover-cropped backdrop and `imagePath` is the centered foreground.
