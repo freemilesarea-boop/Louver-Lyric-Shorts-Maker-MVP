@@ -8,6 +8,7 @@ import {
   WhisperNotInstalledError,
   cancelActiveTranscription,
   detectWhisperBinary,
+  detectWhisperSelfCheck,
   transcribe,
 } from '../audio/transcribe';
 import { prettyErrorMessage } from '../../shared/errors';
@@ -247,8 +248,17 @@ export function registerFileHandlers(
   );
 
   ipcMain.handle('audio:whisperAvailable', () => {
+    // Phase 5-10 — return the structured self-check so the renderer
+    // can surface a precise diagnostic instead of a generic "not
+    // installed". `ok` is still here for backward compat with callers
+    // that only need the boolean.
+    const sc = detectWhisperSelfCheck();
     const bin = detectWhisperBinary();
-    return bin ? { ok: true, kind: bin.kind } : { ok: false };
+    return {
+      ok: sc.ok,
+      kind: bin?.kind,
+      selfCheck: sc,
+    };
   });
 
   ipcMain.handle(

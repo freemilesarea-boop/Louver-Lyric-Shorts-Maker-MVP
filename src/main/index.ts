@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { registerFileHandlers } from './ipc/files';
 import { registerRenderHandlers } from './ipc/render';
 import { mediaUrlToFileUrl } from './ipc/mediaUrl';
+import { detectWhisperSelfCheck } from './audio/transcribe';
 
 const isDev = !app.isPackaged;
 
@@ -101,6 +102,25 @@ app.whenReady().then(() => {
 
   registerFileHandlers(ipcMain, () => mainWindow);
   registerRenderHandlers(ipcMain, () => mainWindow);
+
+  // Phase 5-10 — boot-time bundled-whisper self-check. The result is
+  // logged so packaging regressions ("dmg shipped without ggml model")
+  // are immediately visible in the main-process console. The IPC
+  // handler caches the same value behind a 5min TTL so the renderer
+  // never re-probes.
+  const wsc = detectWhisperSelfCheck(true);
+  // eslint-disable-next-line no-console
+  console.log(
+    '[whisper:selfcheck]',
+    'ok=', wsc.ok,
+    'binFound=', wsc.binFound,
+    'binExecutable=', wsc.binExecutable,
+    'binPath=', wsc.expectedBinPath,
+    'modelFound=', wsc.modelFound,
+    'modelSizeBytes=', wsc.modelSizeBytes,
+    'modelPath=', wsc.expectedModelPath,
+    'reason=', wsc.reason || '(ok)',
+  );
 
   ipcMain.handle('app:openExternal', async (_e, url: string) => {
     await shell.openExternal(url);

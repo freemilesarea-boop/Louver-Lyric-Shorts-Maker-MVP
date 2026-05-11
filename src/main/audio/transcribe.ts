@@ -9,26 +9,56 @@ import { app } from 'electron';
 /**
  * Whisper transcription support.
  *
- * Detection order (Phase 5-1):
- *   1. **Bundled** whisper-cpp at `resources/whisper/bin/<platform>/whisper-cli`
- *      — present in packaged app builds when the OS-specific binary was
- *      shipped. Zero install for end users. The actual binary fetch is a
- *      build-time step (see README §"Whisper bundling"); this file just
- *      knows where to look.
- *   2. **System** `whisper` / `whisper-cpp` / `whisper-cli` on PATH — the
- *      v0 path. Honored as a fallback so power users with their own install
- *      still work.
- *   3. **Manual lyric input** — when neither is found the renderer falls
- *      back to the manual lyrics editor with a friendly Korean prompt.
+ * Phase 5-10 — fully self-contained. The detection chain now uses ONLY
+ * the bundled whisper-cli binary that ships in the installer at
+ * `resources/whisper/bin/<platform>/whisper-cli[.exe]`. PATH fallback
+ * has been removed because the user explicitly required no external
+ * dependencies (no Python, no system whisper, no PATH config). End
+ * users open the app and AI 가사 추출 just works — or it doesn't,
+ * and the failure reason names which bundled file is missing /
+ * corrupt so the user knows whether to reinstall.
  *
- * Audio is sliced by ffmpeg first so whisper only sees the user's selected
- * clip range. This keeps transcription fast and aligns timestamps to the
- * clip's local time (0..durationSec).
+ * Detection order (Phase 5-10):
+ *   1. **Bundled** whisper-cli at process.resourcesPath/whisper/bin/...
+ *      — shipped with the app. If executable AND the ggml model is
+ *      on disk → use it.
+ *   2. Fail with a precise reason (no-binary / no-model / not-
+ *      executable). NO PATH fallback. NO "install Python whisper"
+ *      message.
+ *
+ * Audio is sliced by ffmpeg first so whisper only sees the user's
+ * selected clip range. Timestamps come back clip-relative (0..durSec).
  */
 
 export type TranscribeBinary =
   | { kind: 'python-whisper'; bin: string }
   | { kind: 'whisper-cpp'; bin: string };
+
+/**
+ * Phase 5-10 — structured self-check result. Returned by
+ * detectWhisperSelfCheck (and the audio:whisperAvailable IPC) so the
+ * renderer can show a precise "어떤 파일이 빠졌는지" banner instead
+ * of a generic "Whisper가 없어요" message.
+ */
+export interface WhisperSelfCheck {
+  /** Final verdict — true only when binary + model are both usable. */
+  ok: boolean;
+  /** Resolved bundled binary path, even if it doesn't exist on disk. */
+  expectedBinPath: string | null;
+  /** True when the binary file exists at the expected path. */
+  binFound: boolean;
+  /** True when `bin --help` exited 0 (file exists + is executable). */
+  binExecutable: boolean;
+  /** Resolved bundled model path, even if absent. */
+  expectedModelPath: string | null;
+  /** True when the model file exists. */
+  modelFound: boolean;
+  /** Model file size in bytes when present (sanity check — ggml-base
+   *  should be ~140 MB, ggml-tiny ~75 MB). 0 when absent. */
+  modelSizeBytes: number;
+  /** When ok=false, a friendly Korean explanation. */
+  reason: string;
+}
 
 export interface TranscribeRequest {
   audioPath: string;
@@ -51,9 +81,17 @@ export interface TranscribeOk {
 }
 
 export class WhisperNotInstalledError extends Error {
-  constructor() {
-    super('Whisper가 설치되어 있지 않습니다.');
+  /** Phase 5-10: the structured self-check that produced this error.
+   *  Renderer reads it to render a precise "어떤 파일이 빠졌어요"
+   *  message instead of a generic "Whisper가 없어요". */
+  selfCheck?: WhisperSelfCheck;
+  constructor(selfCheck?: WhisperSelfCheck) {
+    super(
+      selfCheck?.reason
+        ?? '내장 AI 엔진을 찾을 수 없어요. 앱을 재설치하거나 패키징 단계가 끝났는지 확인해주세요.',
+    );
     this.name = 'WhisperNotInstalledError';
+    this.selfCheck = selfCheck;
   }
 }
 
@@ -82,30 +120,81 @@ export function detectWhisperBinary(force = false): TranscribeBinary | null {
     return detectionCache.result;
   }
 
-  // 1. Bundled whisper-cli (Phase 5-1 plumbing). The actual binary is
-  //    fetched at build time; in dev / sandbox builds it may not exist
-  //    yet, in which case we fall through to the system PATH path.
+  // Phase 5-10: bundled-only. No PATH fallback. If the binary isn't
+  // shipped in the installer, AI 가사 추출 is disabled — period. The
+  // user installs / reinstalls / repackages; we never tell them to
+  // pip install something.
   const bundled = bundledWhisperPath();
   if (bundled && existsSync(bundled) && probeBinary(bundled)) {
     const result: TranscribeBinary = { kind: 'whisper-cpp', bin: bundled };
     detectionCache = { at: now, result };
     return result;
   }
-
-  // 2. System PATH fallback.
-  const candidates: TranscribeBinary[] = [
-    { kind: 'python-whisper', bin: 'whisper' },
-    { kind: 'whisper-cpp', bin: 'whisper-cpp' },
-    { kind: 'whisper-cpp', bin: 'whisper-cli' },
-  ];
-  for (const c of candidates) {
-    if (probeBinary(c.bin)) {
-      detectionCache = { at: now, result: c };
-      return c;
-    }
-  }
   detectionCache = { at: now, result: null };
   return null;
+}
+
+/**
+ * Phase 5-10 — structured self-check. Resolves each prerequisite
+ * separately so the renderer (and the boot-time log) can identify
+ * which specific file is missing or broken.
+ *
+ * Cached for 5 minutes alongside detectWhisperBinary so calling
+ * detectWhisperSelfCheck() during transcribe doesn't redo any work.
+ */
+export function detectWhisperSelfCheck(force = false): WhisperSelfCheck {
+  const expectedBinPath = bundledWhisperPath();
+  const expectedModelPath = bundledWhisperModelPath();
+  const binFound = expectedBinPath != null && existsSync(expectedBinPath);
+  const binExecutable = binFound ? probeBinary(expectedBinPath!) : false;
+  const modelFound = expectedModelPath != null && existsSync(expectedModelPath);
+  let modelSizeBytes = 0;
+  if (modelFound && expectedModelPath) {
+    try {
+      modelSizeBytes = require('node:fs').statSync(expectedModelPath).size;
+    } catch {
+      modelSizeBytes = 0;
+    }
+  }
+  // Prime the binary cache so the next transcribe() call doesn't
+  // re-probe the same file.
+  if (force) detectWhisperBinary(true);
+
+  let ok = binFound && binExecutable && modelFound;
+  // Sanity-check model size — ggml-tiny is ~75 MB, ggml-base ~140 MB.
+  // Anything smaller than 50 MB is almost certainly truncated.
+  if (ok && modelSizeBytes < 50 * 1024 * 1024) {
+    ok = false;
+  }
+  let reason = '';
+  if (!binFound) {
+    reason =
+      `내장 AI 엔진 실행 파일을 찾을 수 없어요 (${expectedBinPath ?? '(no path)'}). ` +
+      `앱을 재설치하거나 패키징 단계의 fetch-whisper.sh가 실행됐는지 확인해주세요.`;
+  } else if (!binExecutable) {
+    reason =
+      `내장 AI 엔진은 있지만 실행할 수 없어요 (${expectedBinPath}). ` +
+      `파일 권한 또는 백신/Gatekeeper가 차단하지 않았는지 확인해주세요.`;
+  } else if (!modelFound) {
+    reason =
+      `AI 엔진은 있지만 모델 파일이 빠져 있어요 (${expectedModelPath ?? '(no model path)'}). ` +
+      `앱을 재설치해주세요.`;
+  } else if (modelSizeBytes < 50 * 1024 * 1024) {
+    reason =
+      `모델 파일이 손상된 것 같아요 (${modelSizeBytes} bytes). ` +
+      `정상 크기는 75 MB(tiny) 또는 140 MB(base) 이상입니다.`;
+  }
+
+  return {
+    ok,
+    expectedBinPath,
+    binFound,
+    binExecutable,
+    expectedModelPath,
+    modelFound,
+    modelSizeBytes,
+    reason,
+  };
 }
 
 /**
@@ -189,7 +278,10 @@ export async function transcribe(req: TranscribeRequest): Promise<TranscribeOk> 
   }
   const bin = detectWhisperBinary();
   if (!bin) {
-    throw new WhisperNotInstalledError();
+    // Surface a precise reason via the structured self-check so the
+    // renderer banner can tell the user EXACTLY which file is the
+    // problem (missing binary vs missing model vs not executable).
+    throw new WhisperNotInstalledError(detectWhisperSelfCheck());
   }
   await fs.access(req.audioPath).catch(() => {
     throw new Error(`오디오 파일을 찾을 수 없습니다: ${req.audioPath}`);

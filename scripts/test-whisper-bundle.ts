@@ -54,18 +54,38 @@ async function main(): Promise<void> {
   const binPath = join(binDir, binName);
 
   // ---- Sub-test 1: WITHOUT bundled binary, detect should return null
-  //                 when PATH also has no whisper.
+  //                 regardless of PATH. Phase 5-10 removed PATH
+  //                 fallback entirely.
   const savedCwd = process.cwd();
   const savedPath = process.env.PATH;
   process.chdir(work);
-  process.env.PATH = '/nonexistent-rc-qa-path';
+  // Intentionally keep PATH populated this time — we want to assert
+  // that a system whisper on PATH is NO LONGER picked up after the
+  // Phase 5-10 bundled-only switch.
   try {
     const mod = await import('../src/main/audio/transcribe.ts');
     const r1 = mod.detectWhisperBinary(true);
-    ok('no bundled + no PATH → detect returns null', r1 === null,
-      `got=${JSON.stringify(r1)}`);
+    ok('no bundled + PATH whisper → detect STILL returns null (no PATH fallback)',
+      r1 === null, `got=${JSON.stringify(r1)}`);
     ok('no model bundled → bundledWhisperModelPath returns null',
       mod.bundledWhisperModelPath() === null);
+
+    // Self-check shape — Phase 5-10. With no bundled artifacts at
+    // all, selfCheck.ok must be false and reason must name the
+    // missing binary.
+    const sc0 = mod.detectWhisperSelfCheck(true);
+    ok('selfCheck.ok === false when no bundled', sc0.ok === false,
+      `reason=${sc0.reason}`);
+    ok('selfCheck.binFound === false', sc0.binFound === false);
+    ok('selfCheck.modelFound === false', sc0.modelFound === false);
+    ok('selfCheck.reason mentions 실행 파일',
+      /실행 파일/.test(sc0.reason),
+      `reason=${sc0.reason}`);
+
+    // Set PATH to /nonexistent for the rest of the sub-tests to
+    // confirm PATH continues to be ignored even when intentionally
+    // cleared.
+    process.env.PATH = '/nonexistent-rc-qa-path';
 
     // ---- Sub-test 2: drop a fake bundled whisper-cli. It must accept
     //                  `--help` with exit 0 for detectWhisperBinary to

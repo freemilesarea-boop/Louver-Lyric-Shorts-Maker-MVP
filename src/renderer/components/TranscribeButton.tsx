@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useProjectStore, effectiveLanguage } from '../store/projectStore';
 import { api } from '../lib/api';
 import { prettyErrorMessage } from '../../shared/errors';
+import type { WhisperSelfCheckInfo } from '../../shared/api';
 import type { LyricLine } from '../../shared/types';
 
 /**
@@ -28,13 +29,20 @@ export default function TranscribeButton(): JSX.Element {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
+  /** Phase 5-10 — full per-prerequisite check from the main process.
+   *  When `available` is false, this carries the exact reason (which
+   *  file is missing, what size the model is, etc.) so we can show
+   *  a precise diagnostic instead of "Whisper not installed". */
+  const [selfCheck, setSelfCheck] = useState<WhisperSelfCheckInfo | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     api()
       .whisperAvailable()
       .then((r) => {
-        if (!cancelled) setAvailable(r.ok);
+        if (cancelled) return;
+        setAvailable(r.ok);
+        setSelfCheck(r.selfCheck ?? null);
       })
       .catch(() => {
         if (!cancelled) setAvailable(false);
@@ -131,10 +139,49 @@ export default function TranscribeButton(): JSX.Element {
         {busy && <span className="text-[11px] text-white/60">{status}</span>}
       </div>
       {available === false && (
-        <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-yellow-200">
-          이 빌드에는 자동 가사 추출 엔진이 포함되어 있지 않아요. 가사는
-          아래 입력란에 직접 입력해주세요. (개발자: <code>resources/whisper/</code>
-          {' '}README 참고)
+        <div className="space-y-1.5 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-yellow-200">
+          {/* Phase 5-10 — precise diagnostic. The bundled engine
+            *  ships with the installer; if it's missing OR corrupt
+            *  we tell the user exactly what to fix instead of
+            *  pretending they need to install something. */}
+          <div className="font-semibold">
+            내장 AI 가사 엔진을 사용할 수 없어요.
+          </div>
+          {selfCheck && (
+            <ul className="ml-3 list-disc space-y-0.5 text-[10.5px] text-yellow-200/80">
+              <li>
+                실행 파일:{' '}
+                {selfCheck.binFound
+                  ? selfCheck.binExecutable
+                    ? '✓ 발견 + 실행 가능'
+                    : '⚠ 발견했지만 실행 권한 없음'
+                  : '✗ 없음'}
+                {selfCheck.expectedBinPath && (
+                  <span className="ml-1 font-mono text-[10px] text-yellow-200/60">
+                    {selfCheck.expectedBinPath}
+                  </span>
+                )}
+              </li>
+              <li>
+                모델 파일:{' '}
+                {selfCheck.modelFound
+                  ? `✓ 발견 (${(selfCheck.modelSizeBytes / 1024 / 1024).toFixed(1)} MB)`
+                  : '✗ 없음'}
+                {selfCheck.expectedModelPath && (
+                  <span className="ml-1 font-mono text-[10px] text-yellow-200/60">
+                    {selfCheck.expectedModelPath}
+                  </span>
+                )}
+              </li>
+            </ul>
+          )}
+          <div className="text-yellow-200/80">
+            {selfCheck?.reason ??
+              '앱을 재설치해주세요. 외부 Python / whisper / PATH 설정은 필요하지 않습니다.'}
+          </div>
+          <div className="text-[10.5px] text-yellow-200/60">
+            그동안은 아래 입력란에 가사를 직접 입력하실 수 있어요.
+          </div>
         </div>
       )}
       {error && (

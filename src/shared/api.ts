@@ -74,9 +74,23 @@ export type TranscodeReply =
   | { ok: true; outputPath: string }
   | { ok: false; error: string };
 
+export interface WhisperSelfCheckInfo {
+  ok: boolean;
+  expectedBinPath: string | null;
+  binFound: boolean;
+  binExecutable: boolean;
+  expectedModelPath: string | null;
+  modelFound: boolean;
+  modelSizeBytes: number;
+  reason: string;
+}
+
 export interface WhisperAvailability {
   ok: boolean;
   kind?: 'python-whisper' | 'whisper-cpp';
+  /** Phase 5-10 — structured per-prerequisite check. The renderer
+   *  uses this to render a precise "어떤 파일이 빠졌어요" banner. */
+  selfCheck?: WhisperSelfCheckInfo;
 }
 
 export interface BundledFontVariant {
