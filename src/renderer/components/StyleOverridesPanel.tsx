@@ -4,6 +4,7 @@ import {
   LYRIC_EFFECT_LABEL,
   type LyricEffect,
 } from '../../shared/types';
+import { resolveDisplay } from '../../shared/scene';
 import { FONTS, FONT_KEYS, type FontKey } from '../../shared/fonts';
 
 /**
@@ -33,6 +34,11 @@ export default function StyleOverridesPanel(): JSX.Element {
     metaFontScale: overrides.metaFontScale ?? 1,
     metaFontKey: (overrides.metaFontKey ?? '__auto__') as string,
   };
+  // Phase 5-7 — effective display state (template default vs override).
+  // The toggle UI below shows the *effective* on/off state and writes the
+  // override only when the user changes it; resetting clears the field
+  // so it falls back to the template's default again.
+  const display = resolveDisplay(template, overrides);
   const hasAny =
     overrides.mainBorderColor !== undefined ||
     overrides.lyricPrimaryColor !== undefined ||
@@ -42,7 +48,9 @@ export default function StyleOverridesPanel(): JSX.Element {
     overrides.lyricFontScale !== undefined ||
     overrides.metaColor !== undefined ||
     overrides.metaFontScale !== undefined ||
-    overrides.metaFontKey !== undefined;
+    overrides.metaFontKey !== undefined ||
+    overrides.showWaveform !== undefined ||
+    overrides.showPlayerChrome !== undefined;
 
   return (
     <div className="space-y-4 text-xs">
@@ -215,6 +223,35 @@ export default function StyleOverridesPanel(): JSX.Element {
         </Row>
       </Group>
 
+      <Group title="표시 요소">
+        <Row
+          label="재생 플레이어"
+          active={overrides.showPlayerChrome !== undefined}
+          onReset={() => setOverrides({ showPlayerChrome: undefined })}
+        >
+          <ToggleSegment
+            value={display.showPlayerChrome || display.showProgressBar}
+            onChange={(v) => setOverrides({ showPlayerChrome: v })}
+          />
+          <span className="text-[11px] text-white/40">
+            진행바 + 음악 앱 스타일 카드
+          </span>
+        </Row>
+        <Row
+          label="웨이브폼"
+          active={overrides.showWaveform !== undefined}
+          onReset={() => setOverrides({ showWaveform: undefined })}
+        >
+          <ToggleSegment
+            value={display.showWaveform}
+            onChange={(v) => setOverrides({ showWaveform: v })}
+          />
+          <span className="text-[11px] text-white/40">
+            오디오에 반응하는 이퀄라이저 막대
+          </span>
+        </Row>
+      </Group>
+
       {hasAny && (
         <button
           onClick={resetAll}
@@ -234,6 +271,33 @@ function Group(props: { title: string; children: React.ReactNode }): JSX.Element
         {props.title}
       </div>
       <div className="space-y-2">{props.children}</div>
+    </div>
+  );
+}
+
+/**
+ * Two-button on/off segmented control. Used for "표시 요소" toggles —
+ * the user always sees both states and a tap commits immediately.
+ */
+function ToggleSegment(props: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}): JSX.Element {
+  const seg = (label: string, on: boolean, target: boolean) => (
+    <button
+      onClick={() => props.onChange(target)}
+      className={[
+        'rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors',
+        on ? 'bg-accent text-ink-950' : 'bg-white/10 text-white/60 hover:bg-white/15',
+      ].join(' ')}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="flex items-center gap-1">
+      {seg('표시', props.value === true, true)}
+      {seg('숨김', props.value === false, false)}
     </div>
   );
 }

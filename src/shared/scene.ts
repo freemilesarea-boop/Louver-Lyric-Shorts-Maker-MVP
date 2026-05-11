@@ -233,6 +233,37 @@ export function resolvePhotoBox(
   return { x, y, width, height };
 }
 
+/**
+ * Phase 5-7 — resolve which optional UI layers (player chrome /
+ * progress bar / waveform) actually render for this scene. The user's
+ * StyleOverrides win when set; otherwise we follow the template
+ * defaults. Both `paintChrome` (preview + bake) and the ffmpeg filter
+ * graph read this so preview ↔ export stay in lockstep.
+ */
+export interface EffectiveDisplay {
+  showWaveform: boolean;
+  /** True when the template ships a player-chrome painter (apple-like
+   *  / spotify-like / youtube-like) AND the user hasn't hidden it. */
+  showPlayerChrome: boolean;
+  /** True when there's any progress bar to draw. Tied to player chrome
+   *  visibility (hiding the chrome also hides the progress bar) so the
+   *  toggle reads as a single "재생 플레이어 표시" knob. */
+  showProgressBar: boolean;
+}
+
+export function resolveDisplay(
+  t: Template,
+  overrides?: import('./types').StyleOverrides | null,
+): EffectiveDisplay {
+  const playerVis =
+    overrides?.showPlayerChrome ?? (t.playerChrome != null || t.progressBarStyle !== 'none');
+  return {
+    showWaveform: overrides?.showWaveform ?? t.showWaveform,
+    showPlayerChrome: playerVis && t.playerChrome != null,
+    showProgressBar: playerVis && t.progressBarStyle !== 'none',
+  };
+}
+
 export function resolveFrame(
   t: Template,
   overrides?: import('./types').StyleOverrides | null,
@@ -430,7 +461,8 @@ export function renderScene(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): 
   //     the preview. The card is mostly static (track line + progress bar
   //     position is amplitude-independent at the keyframe sample), so it
   //     bakes cleanly into the same per-line PNG overlays.
-  if (o.template.playerChrome) {
+  const display = resolveDisplay(o.template, o.styleOverrides ?? null);
+  if (o.template.playerChrome && display.showPlayerChrome) {
     const r = o.reactive;
     const liveAmp = r ? Math.max(r.pulse, r.waveformBoost) : null;
     const metaFontKeyOverride = (o.styleOverrides?.metaFontKey ?? null) as
@@ -545,9 +577,10 @@ function paintForegroundCard(
 function paintChrome(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
   const t = o.template;
   const ratio = Math.max(0, Math.min(1, o.timeRatio ?? 0));
+  const display = resolveDisplay(t, o.styleOverrides ?? null);
 
   // Progress bar.
-  if (t.progressBarStyle !== 'none') {
+  if (display.showProgressBar) {
     const margin = 80;
     const fullW = SCENE_W - margin * 2;
     const barH = t.progressBarStyle === 'thick' ? 10 : 6;
@@ -565,7 +598,7 @@ function paintChrome(ctx: CanvasRenderingContext2D, o: RenderSceneOpts): void {
   }
 
   // Reactive waveform — uses live amplitude when the curve is wired up.
-  if (t.showWaveform) {
+  if (display.showWaveform) {
     // Phase 5-5: paintWaveform now takes the full amplitude curve when
     // available. Each bar samples a windowed offset around the current
     // playback time → real spectrum motion. The reactive state's
@@ -1246,7 +1279,7 @@ function paintReactiveOverlay(ctx: CanvasRenderingContext2D, o: RenderSceneOpts)
   // The base waveform is drawn by ffmpeg drawbox in the export filter graph;
   // this halo sits on top so peaks are visibly emphasized without changing
   // bar heights (which would require runtime ffmpeg expression rewriting).
-  if (r.waveformBoost > 0 && t.showWaveform) {
+  if (r.waveformBoost > 0 && resolveDisplay(t, o.styleOverrides ?? null).showWaveform) {
     const alpha = 0.35 * r.waveformBoost;
     const yMid = Math.round(SCENE_H * 0.84);
     const halfH = 90;

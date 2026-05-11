@@ -96,6 +96,21 @@ jobs:
         # itself spawns child tsx processes via shell:true on win32.
         run: npm run test:rc-qa
 
+      - name: Fetch bundled whisper (best-effort)
+        # Phase 5-7 — pulls whisper.cpp's whisper-cli binary + ggml-base
+        # into resources/whisper/ so the dist installer ships AI lyric
+        # extraction with zero install on the user's machine. The script
+        # is idempotent; on Windows it grabs the upstream prebuilt zip,
+        # on macOS / Linux it builds from source (~3 min on a CI runner).
+        #
+        # Marked best-effort with `continue-on-error: true`: if the
+        # upstream release page is down or `cmake` isn't on the runner,
+        # the build still ships — just without bundled whisper, and the
+        # in-app TranscribeButton surfaces the friendly fallback message.
+        continue-on-error: true
+        shell: bash
+        run: scripts/fetch-whisper.sh
+
       - name: Build dist installer
         run: npm run ${{ matrix.dist-script }}
         env:

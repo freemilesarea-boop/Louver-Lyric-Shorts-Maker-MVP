@@ -9,7 +9,11 @@ interface Props {
   onChangeStart: (s: number) => void;
   onChangeDuration: (d: 15 | 30 | 60) => void;
   audioRef: React.MutableRefObject<HTMLAudioElement | null>;
+  /** Toggle play/pause for the [startSec, startSec+durationSec] window. */
   onPreviewPlay: () => void;
+  /** Phase 5-7 — when true the button shows a stop-style affordance so
+   *  the user can tell at a glance that the section is actively playing. */
+  isPreviewPlaying?: boolean;
 }
 
 /**
@@ -67,7 +71,35 @@ export default function AudioRangeSelector(props: Props): JSX.Element {
             />
           )}
 
-          {/* Quick length buttons + preview play. */}
+          {/* Phase 5-7: preview button gets its own dedicated row at the
+           *  top so it never wraps off-screen behind the length pills.
+           *  Becomes a stop-style affordance while playing. */}
+          <div className="mb-2">
+            <button
+              onClick={props.onPreviewPlay}
+              className={[
+                'flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition-colors',
+                props.isPreviewPlaying
+                  ? 'bg-red-500/80 text-white hover:bg-red-500'
+                  : 'bg-accent text-ink-950 hover:bg-accent-soft',
+              ].join(' ')}
+              title={props.isPreviewPlaying ? '정지' : '선택한 구간만 재생합니다'}
+            >
+              <span className="font-mono text-base leading-none">
+                {props.isPreviewPlaying ? '■' : '▶'}
+              </span>
+              <span>
+                {props.isPreviewPlaying
+                  ? '구간 재생 중지'
+                  : '선택 구간 미리듣기'}
+              </span>
+              <span className="font-mono text-[11px] opacity-75">
+                {fmt(props.startSec)} ~ {fmt(endSec)}
+              </span>
+            </button>
+          </div>
+
+          {/* Quick length buttons. */}
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-white/50">길이</span>
             {[15, 30, 60].map((d) => (
@@ -89,12 +121,6 @@ export default function AudioRangeSelector(props: Props): JSX.Element {
                 {d}초
               </button>
             ))}
-            <button
-              onClick={props.onPreviewPlay}
-              className="ml-auto rounded-full bg-white/10 px-3 py-1 text-xs hover:bg-white/15"
-            >
-              ▶ 구간 미리듣기
-            </button>
           </div>
 
           {/* Explicit start / end / 사용 길이 display. */}

@@ -23,6 +23,7 @@
     "test:progress-motion": "tsx scripts/test-real-progress-motion.ts",
     "test:media-loading": "tsx scripts/test-media-loading.ts",
     "test:whisper-bundle": "tsx scripts/test-whisper-bundle.ts",
+    "test:display-toggles": "tsx scripts/test-display-toggles.ts",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {

@@ -220,6 +220,13 @@ export interface StyleOverrides {
   /** Multiplicative scale on the meta font size (0.75..1.5). 1 = no
    *  change. Applied to both title and artist. */
   metaFontScale?: number;
+  /** Phase 5-7 — show/hide the equalizer-style waveform regardless of
+   *  the template default. `undefined` = follow template.showWaveform. */
+  showWaveform?: boolean;
+  /** Phase 5-7 — show/hide the player chrome (Apple/Spotify/YouTube
+   *  glassy strip) AND its progress bar. `undefined` = follow the
+   *  template's playerChrome + progressBarStyle defaults. */
+  showPlayerChrome?: boolean;
 }
 
 /** Identity overrides — every field unset / passthrough. */

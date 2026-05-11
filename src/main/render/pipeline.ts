@@ -97,6 +97,10 @@ export async function runRender(
       // via drawbox + t/dur expression. No-op for templates without
       // a player chrome.
       playerProgressGeom: progressBarGeom(req.template.playerChrome ?? null),
+      // Phase 5-7 — user toggles for waveform / player chrome visibility
+      // and the amplitude curve that drives the equalizer bars.
+      styleOverrides: req.styleOverrides ?? null,
+      amplitudeCurve: req.amplitudeCurve ?? null,
     });
     const filterScriptPath = join(tempDir, 'filter.txt');
     await fs.writeFile(filterScriptPath, filter, 'utf8');

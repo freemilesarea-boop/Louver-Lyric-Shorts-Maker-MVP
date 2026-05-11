@@ -45,11 +45,22 @@ export default function EditorScreen(): JSX.Element {
   const watermark = effectiveWatermark(state);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
 
   useEffect(() => {
     if (!audioRef.current) return;
     audioRef.current.currentTime = state.startSec;
   }, [state.startSec]);
+
+  // Stop the preview if the user changes the selected window mid-play —
+  // otherwise the audio would keep going past the (now-stale) endSec.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a || !isPreviewPlaying) return;
+    a.pause();
+    setIsPreviewPlaying(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.startSec, state.durationSec, state.audioPath]);
 
   // Analyze amplitude when the audio path or selected range changes. The
   // result is stored once and reused by both preview and export.
@@ -77,11 +88,41 @@ export default function EditorScreen(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.audioPath, state.startSec, state.durationSec]);
 
+  // Toggle playback of the selected [startSec, startSec+durationSec]
+  // window. Stops automatically at the end via a `timeupdate` listener
+  // (more accurate than a setTimeout, which drifts when the browser
+  // throttles the tab). Re-clicking while playing pauses immediately.
   const onPreviewPlay = () => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = state.startSec;
-    audioRef.current.play();
-    setTimeout(() => audioRef.current?.pause(), state.durationSec * 1000);
+    const a = audioRef.current;
+    if (!a) return;
+    if (isPreviewPlaying) {
+      a.pause();
+      setIsPreviewPlaying(false);
+      return;
+    }
+    const endSec = state.startSec + state.durationSec;
+    a.currentTime = state.startSec;
+    const onTime = () => {
+      if (a.currentTime >= endSec) {
+        a.pause();
+        a.removeEventListener('timeupdate', onTime);
+        a.removeEventListener('pause', onPause);
+        setIsPreviewPlaying(false);
+      }
+    };
+    const onPause = () => {
+      a.removeEventListener('timeupdate', onTime);
+      a.removeEventListener('pause', onPause);
+      setIsPreviewPlaying(false);
+    };
+    a.addEventListener('timeupdate', onTime);
+    a.addEventListener('pause', onPause);
+    a.play()
+      .then(() => setIsPreviewPlaying(true))
+      .catch(() => {
+        a.removeEventListener('timeupdate', onTime);
+        a.removeEventListener('pause', onPause);
+      });
   };
 
   const onRender = async () => {
@@ -312,6 +353,7 @@ export default function EditorScreen(): JSX.Element {
               audioDataUrl={state.audioDataUrl}
               audioRef={audioRef}
               onPreviewPlay={onPreviewPlay}
+              isPreviewPlaying={isPreviewPlaying}
             />
             <HookSuggester />
           </div>

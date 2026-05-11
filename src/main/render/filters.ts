@@ -1,6 +1,12 @@
-import type { MotionPreset, Template } from '../../shared/types';
+import type {
+  AmplitudeCurve,
+  MotionPreset,
+  StyleOverrides,
+  Template,
+} from '../../shared/types';
 import { ffmpegMotionExpressions, isStaticMotion } from '../../shared/motion';
 import type { ProgressBarGeom } from '../../shared/playerChrome';
+import { resolveDisplay } from '../../shared/scene';
 
 export interface OverlayTiming {
   /** Index into ffmpeg input list (0 = image, 1 = audio, 2..N = overlays). */
@@ -30,7 +36,26 @@ export interface FilterArgs {
    *  here using a t/dur expression; the chrome PNG painter skips its
    *  own progress in export mode to avoid double-drawing. */
   playerProgressGeom?: ProgressBarGeom | null;
+  /** Per-project visibility overrides for player chrome / waveform.
+   *  Phase 5-7 — when set the user can hide the waveform or progress
+   *  bar regardless of the template default. Forwarded straight into
+   *  resolveDisplay() which both sides agree on. */
+  styleOverrides?: StyleOverrides | null;
+  /** Pre-computed amplitude timeline. When present the waveform bake
+   *  uses real loud/quiet differences instead of a static sin field. */
+  amplitudeCurve?: AmplitudeCurve | null;
 }
+
+/**
+ * Hard cap on the number of `drawbox` blocks the waveform bake is
+ * allowed to emit. 32 bars × 8fps × 60s = 15360, which is right at the
+ * edge of where ffmpeg's filter graph parser starts getting unhappy.
+ * If we'd blow the cap we silently drop back to the cheap static-sin
+ * variant and log a single warning so the render keeps shipping.
+ */
+export const WAVEFORM_DRAWBOX_CAP = 12000;
+export const WAVEFORM_BARS = 32;
+export const WAVEFORM_EXPORT_FPS = 8;
 
 /**
  * Build an ffmpeg filter graph for a 9:16 lyric short.
@@ -147,7 +172,8 @@ export function buildFilterGraph(a: FilterArgs): string {
   // pre-computed width corresponding to that slice's progress fraction.
   // 4fps step rate = 250ms per slice = visually smooth + low filter
   // graph cost (e.g. 24 boxes for a 6s clip, 60 for 15s).
-  if (t.progressBarStyle !== 'none' && !t.playerChrome) {
+  const display = resolveDisplay(t, a.styleOverrides ?? null);
+  if (display.showProgressBar && !t.playerChrome) {
     const margin = 80;
     const barY = Math.round(H * 0.88);
     const fullW = W - margin * 2;
@@ -205,7 +231,7 @@ export function buildFilterGraph(a: FilterArgs): string {
   //          skips its own progress bar in export mode (skipProgress=
   //          true) so this is the only on-screen progress for player
   //          chrome templates.
-  if (t.playerChrome && a.playerProgressGeom) {
+  if (display.showPlayerChrome && t.playerChrome && a.playerProgressGeom) {
     const g = a.playerProgressGeom;
     const accent = t.lyricSubColor;
     const fg = t.lyricColor;
@@ -241,24 +267,83 @@ export function buildFilterGraph(a: FilterArgs): string {
     }
   }
 
-  // --- 7) Faux waveform ---
-  if (t.showWaveform) {
-    const bars = 32;
+  // --- 7) Reactive waveform ---
+  // ffmpeg 7.0.2 won't evaluate the bar `h=...` expression per frame
+  // (same issue as the progress bar above), so to make bars actually
+  // breathe with the music we time-slice at WAVEFORM_EXPORT_FPS and
+  // emit one drawbox per (slice × bar). The slice height is sampled
+  // from `amplitudeCurve` at the slice's midpoint with a small per-bar
+  // offset so the equalizer feels organic instead of pulsing in lockstep.
+  //
+  // Hard cap: 32 bars × 8fps × 60s = 15360. WAVEFORM_DRAWBOX_CAP guards
+  // against runaway durations / fps tweaks blowing up ffmpeg's filter
+  // graph. If we'd exceed it we silently fall back to the cheap legacy
+  // sin variant (32 boxes total) and log a warning so the operator
+  // notices.
+  if (display.showWaveform) {
+    const bars = WAVEFORM_BARS;
     const margin = 100;
     const baseY = Math.round(H * 0.84);
     const region = W - margin * 2;
     const slot = Math.floor(region / bars);
-    for (let i = 0; i < bars; i++) {
-      const seed = (i * 37) % 100;
-      const heightExpr = `clip(${seed}/100*40+30+20*sin(t*3+${i}*0.7),12,80)`;
-      const x = margin + i * slot;
-      const out = `wf${i}`;
-      lines.push(
-        `[${chainIn}]drawbox=x=${x}:y='${baseY}-(${heightExpr})/2':` +
-          `w=${Math.max(2, slot - 4)}:h='${heightExpr}':` +
-          `color=${ffmpegColor(t.lyricColor, 0.85)}:t=fill:replace=1[${out}]`,
-      );
-      chainIn = out;
+    const barW = Math.max(2, slot - 4);
+    const color = ffmpegColor(t.lyricColor, 0.85);
+
+    const curve = a.amplitudeCurve ?? null;
+    const sliceSec = 1 / WAVEFORM_EXPORT_FPS;
+    const slices = Math.max(1, Math.ceil(a.durationSec / sliceSec));
+    const totalDrawboxes = bars * slices;
+
+    if (curve && totalDrawboxes <= WAVEFORM_DRAWBOX_CAP) {
+      for (let s = 0; s < slices; s++) {
+        const tStart = s * sliceSec;
+        const tEnd = Math.min(a.durationSec, (s + 1) * sliceSec);
+        const tMid = (tStart + tEnd) / 2;
+        const enable = `enable='between(t,${tStart.toFixed(3)},${tEnd.toFixed(3)})'`;
+        for (let i = 0; i < bars; i++) {
+          // Per-bar offset so adjacent bars don't all peak at the same
+          // sample — gives the equalizer a shimmery, non-monolithic
+          // feel even though they share one source curve.
+          const sampleT = tMid + ((i - bars / 2) * 0.02);
+          const amp = sampleAmplitudeAt(curve, sampleT);
+          const seed = (i * 37) % 100;
+          const baseH = 14;
+          // bar height between 14 (silence) and ~110 (peaks).
+          const h = Math.round(baseH + amp * 96 + (seed - 50) * 0.08);
+          const y = baseY - Math.round(h / 2);
+          const x = margin + i * slot;
+          const out = `wf${s}_${i}`;
+          lines.push(
+            `[${chainIn}]drawbox=x=${x}:y=${y}:w=${barW}:h=${h}:` +
+              `color=${color}:t=fill:replace=1:${enable}[${out}]`,
+          );
+          chainIn = out;
+        }
+      }
+    } else {
+      if (curve && totalDrawboxes > WAVEFORM_DRAWBOX_CAP) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[render] waveform bake skipped amplitude path: would emit ` +
+            `${totalDrawboxes} drawboxes (cap ${WAVEFORM_DRAWBOX_CAP}). ` +
+            `Falling back to static sin equalizer.`,
+        );
+      }
+      // Legacy: 32 bars, time-invariant expression. Still better than
+      // nothing when no curve is wired up (e.g. amplitude analysis
+      // failed) or when the slice budget would blow ffmpeg.
+      for (let i = 0; i < bars; i++) {
+        const seed = (i * 37) % 100;
+        const heightExpr = `clip(${seed}/100*40+30+20*sin(t*3+${i}*0.7),12,80)`;
+        const x = margin + i * slot;
+        const out = `wf${i}`;
+        lines.push(
+          `[${chainIn}]drawbox=x=${x}:y='${baseY}-(${heightExpr})/2':` +
+            `w=${barW}:h='${heightExpr}':` +
+            `color=${color}:t=fill:replace=1[${out}]`,
+        );
+        chainIn = out;
+      }
     }
   }
 
@@ -288,4 +373,21 @@ function ffmpegColor(hex: string, alpha: number): string {
   const a = Math.max(0, Math.min(1, alpha));
   const cleaned = hex.startsWith('#') ? hex.slice(1) : hex;
   return `0x${cleaned}@${a.toFixed(3)}`;
+}
+
+/**
+ * Sample an AmplitudeCurve at clip-relative seconds, clamped to [0,1].
+ * Out-of-range times return 0 (silence) — same convention scene.ts'
+ * preview waveform uses, so loud-vs-quiet differences appear at the
+ * same moments in preview and export.
+ */
+function sampleAmplitudeAt(
+  curve: AmplitudeCurve,
+  tSec: number,
+): number {
+  if (curve.values.length === 0 || curve.intervalSec <= 0) return 0;
+  if (tSec < 0 || tSec >= curve.durationSec) return 0;
+  const idx = Math.floor(tSec / curve.intervalSec);
+  const v = curve.values[Math.max(0, Math.min(curve.values.length - 1, idx))];
+  return Math.max(0, Math.min(1, v ?? 0));
 }

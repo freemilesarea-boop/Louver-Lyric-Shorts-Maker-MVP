@@ -26,17 +26,32 @@ files (small, medium, large) are not loaded by default.
 ## Why this is empty in the repo
 
 Binary blobs are not committed to git. They are fetched / built at release
-time. Two options:
+time by `scripts/fetch-whisper.sh`:
 
-1. **Build script** (`scripts/fetch-whisper.sh`, future): downloads pre-built
-   whisper.cpp binaries from the upstream releases page + the ggml model
-   from huggingface, places them here, and CI runs this before `dist:<os>`.
-2. **Manual fetch**: contributor / packager runs `make` against a checkout
-   of whisper.cpp for each target OS and drops the resulting `whisper-cli`
-   here.
+- **Windows**: downloads the upstream `whisper-bin-x64.zip` from the
+  pinned whisper.cpp GitHub release and extracts `whisper-cli.exe`.
+- **macOS / Linux**: clones the same release tag and builds `whisper-cli`
+  from source via cmake (takes ~2-3 minutes on a CI runner).
+- **ggml model**: pulled from Hugging Face (`ggml-base.bin` by default;
+  set `WHISPER_MODEL=tiny` in the environment for a smaller bundle).
 
-Until binaries land, the runtime falls back gracefully — see fallback chain
-above.
+The script is idempotent — re-running it skips downloads when the binary
+and model already exist. CI invokes it before `electron-builder` packages
+the installer (see `.github/workflows/build-release.yml → Fetch bundled
+whisper`). Local devs can also run it directly:
+
+```sh
+scripts/fetch-whisper.sh                          # auto-detect host OS
+WHISPER_MODEL=tiny scripts/fetch-whisper.sh       # smaller bundle
+FORCE_PLATFORM=darwin-arm64 scripts/fetch-whisper.sh   # cross-fetch
+```
+
+Pin a different upstream version with `WHISPER_RELEASE=v1.x.y` (default:
+`v1.7.4`).
+
+If the fetch fails (offline runner, upstream outage), the runtime still
+falls back gracefully — see fallback chain above. The in-app
+TranscribeButton surfaces a friendly Korean message.
 
 ## Licensing
 

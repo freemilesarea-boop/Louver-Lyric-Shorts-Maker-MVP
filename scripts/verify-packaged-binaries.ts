@@ -72,6 +72,17 @@ async function findBinariesToCheck(platform: Platform): Promise<BinaryCheck[]> {
   const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
   const ffmpegName = `ffmpeg${ext}`;
   const ffprobeRel = join('bin', platform, arch, `ffprobe${ext}`);
+  // Phase 5-7 — bundled whisper.cpp lands under
+  // `Resources/whisper/bin/<plat-key>/whisper-cli[.exe]` via
+  // electron-builder's extraResources rule. The plat-key matches what
+  // detectWhisperBinary builds at runtime.
+  const whisperPlatKey =
+    platform === 'darwin'
+      ? `darwin-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
+      : platform === 'win32'
+        ? 'win32-x64'
+        : 'linux-x64';
+  const whisperName = platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
 
   // electron-builder lays the unpacked tree under different names per
   // platform target — collect every plausible spot.
@@ -93,6 +104,16 @@ async function findBinariesToCheck(platform: Platform): Promise<BinaryCheck[]> {
     ];
     for (const p of ffprobeCandidates) {
       if (await pathExists(p)) checks.push({ path: p, required: true });
+    }
+
+    // Bundled whisper-cli (extraResources path: resources/whisper → whisper).
+    // Required when fetch-whisper.sh ran in CI; optional otherwise so the
+    // verifier doesn't fail builds that intentionally ship without it.
+    const whisperCandidates = [
+      join(root, 'resources', 'whisper', 'bin', whisperPlatKey, whisperName),
+    ];
+    for (const p of whisperCandidates) {
+      if (await pathExists(p)) checks.push({ path: p, required: false });
     }
   }
   return checks;

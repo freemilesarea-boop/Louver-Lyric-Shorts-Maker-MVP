@@ -99,7 +99,11 @@ export default function LivePreview(props: Props): JSX.Element {
       // Video kind: stream into an off-DOM HTMLVideoElement and let
       // canvas drawImage paint the current frame each repaint. We copy
       // videoWidth/videoHeight onto the element's width/height so
-      // renderScene's fitContain math (which reads .width/.height) works.
+      // renderScene's fitContain math (which reads .width/.height)
+      // works. The video plays muted on a loop so the canvas always has
+      // fresh frames; the time loop further down also bumps a tick at
+      // ~30fps so even on the slowest preview path the canvas keeps
+      // pulling new content out of the video element.
       const v = document.createElement('video');
       v.muted = true;
       v.loop = true;
@@ -130,7 +134,9 @@ export default function LivePreview(props: Props): JSX.Element {
       };
     }
     // image / gif: HTMLImageElement handles both, including animated
-    // GIFs (Chromium animates the bitmap as we drawImage in rAF).
+    // GIFs (Chromium animates the bitmap as we drawImage in rAF — but
+    // only as long as something repaints the canvas, hence the time
+    // loop below also engages for `gif`).
     const img = new Image();
     img.onload = () => setPhoto(img);
     img.onerror = () => setPhoto(null);
@@ -167,7 +173,12 @@ export default function LivePreview(props: Props): JSX.Element {
       props.template.showWaveform ||
       props.template.progressBarStyle !== 'none' ||
       chunks.length > 1 ||
-      props.mainMediaKind === 'video';
+      // GIF + video both need the canvas to keep repainting so the
+      // visible frame advances. For GIF, Chromium drives the bitmap
+      // animation but only repaints when drawImage is called — without
+      // a tick, the canvas freezes on the first frame.
+      props.mainMediaKind === 'video' ||
+      props.mainMediaKind === 'gif';
     if (!animationsActive) {
       setTNowSec(0);
       return;
@@ -319,6 +330,16 @@ export default function LivePreview(props: Props): JSX.Element {
         className="max-h-full max-w-full rounded-2xl shadow-2xl"
         style={{ aspectRatio: '9 / 16', height: '100%', objectFit: 'contain' }}
       />
+      {/* Phase 5-7 — explicit "loading video" indicator while metadata
+       *  is still in flight. The canvas would otherwise paint just the
+       *  background card and look like the user picked a blank file. */}
+      {props.mainMediaKind === 'video' && props.imageDataUrl && !photo && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-white/60">
+          <div className="rounded-md bg-ink-950/70 px-3 py-1.5">
+            영상 로딩 중...
+          </div>
+        </div>
+      )}
       {props.layoutEditMode && props.onLayoutChange && (
         <DragOverlay
           canvasRef={canvasRef}
