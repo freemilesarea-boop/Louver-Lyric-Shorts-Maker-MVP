@@ -265,7 +265,19 @@ async function checkWhisperGracefulFallback(): Promise<void> {
   const { detectWhisperBinary, transcribe, WhisperNotInstalledError } = await import(
     '../src/main/audio/transcribe.ts'
   );
+  // Phase 5-8 — detectWhisperBinary now checks `process.cwd() +
+  // resources/whisper/bin/<plat>/whisper-cli` BEFORE PATH. To honestly
+  // simulate "no whisper installed anywhere", we need to chdir to a
+  // temp dir (no bundled artifacts) AND clear PATH (no system whisper).
+  // Without the chdir, this test would happily find the linux-x64
+  // binary that scripts/fetch-whisper.sh just built.
+  const { promises: fsp } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join: joinPath } = await import('node:path');
+  const isolatedCwd = await fsp.mkdtemp(joinPath(tmpdir(), 'rc-qa-whisper-iso-'));
+  const savedCwd = process.cwd();
   const savedPath = process.env.PATH;
+  process.chdir(isolatedCwd);
   process.env.PATH = '/nonexistent-rc-qa-path';
   try {
     const detected = detectWhisperBinary(true);
@@ -293,7 +305,9 @@ async function checkWhisperGracefulFallback(): Promise<void> {
       `${actualErrorName}: ${actualMessage.slice(0, 80)}`,
     );
   } finally {
+    process.chdir(savedCwd);
     process.env.PATH = savedPath;
+    await fsp.rm(isolatedCwd, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 

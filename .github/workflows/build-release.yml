@@ -96,20 +96,40 @@ jobs:
         # itself spawns child tsx processes via shell:true on win32.
         run: npm run test:rc-qa
 
-      - name: Fetch bundled whisper (best-effort)
-        # Phase 5-7 — pulls whisper.cpp's whisper-cli binary + ggml-base
+      - name: Fetch bundled whisper
+        # Phase 5-7/8 — pulls whisper.cpp's whisper-cli binary + ggml-base
         # into resources/whisper/ so the dist installer ships AI lyric
         # extraction with zero install on the user's machine. The script
         # is idempotent; on Windows it grabs the upstream prebuilt zip,
-        # on macOS / Linux it builds from source (~3 min on a CI runner).
+        # on macOS / Linux it builds from source statically (~3 min on a
+        # CI runner; -DBUILD_SHARED_LIBS=OFF produces a standalone binary
+        # that doesn't need sidecar .so/.dylib files).
         #
-        # Marked best-effort with `continue-on-error: true`: if the
-        # upstream release page is down or `cmake` isn't on the runner,
-        # the build still ships — just without bundled whisper, and the
-        # in-app TranscribeButton surfaces the friendly fallback message.
-        continue-on-error: true
+        # No longer best-effort — Phase 5-8 user spec requires actual AI
+        # lyric extraction in shipped installers. A failed fetch fails
+        # the build so we never publish a "no AI engine" dist.
         shell: bash
         run: scripts/fetch-whisper.sh
+
+      - name: Confirm bundled whisper landed in tree
+        # Belt-and-suspenders: fail fast if the script silently produced
+        # nothing (e.g. cmake error swallowed). Both the binary and the
+        # model must be on disk before electron-builder packages them.
+        shell: bash
+        run: |
+          set -e
+          case "${{ runner.os }}" in
+            Linux)   plat=linux-x64; bin=whisper-cli ;;
+            macOS)
+              if [ "$(uname -m)" = "arm64" ]; then plat=darwin-arm64; else plat=darwin-x64; fi
+              bin=whisper-cli ;;
+            Windows) plat=win32-x64; bin=whisper-cli.exe ;;
+          esac
+          test -f "resources/whisper/bin/$plat/$bin" \
+            || { echo "MISSING: resources/whisper/bin/$plat/$bin"; exit 1; }
+          test -f "resources/whisper/models/ggml-base.bin" \
+            || { echo "MISSING: resources/whisper/models/ggml-base.bin"; exit 1; }
+          echo "fetch-whisper produced expected artifacts for $plat"
 
       - name: Build dist installer
         run: npm run ${{ matrix.dist-script }}

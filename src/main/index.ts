@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol } from 'electron';
 import { join } from 'node:path';
 import { registerFileHandlers } from './ipc/files';
 import { registerRenderHandlers } from './ipc/render';
-import { mediaUrlToFileUrl } from './ipc/mediaUrl';
+import { handleMediaRequest } from './ipc/mediaProtocol';
 
 const isDev = !app.isPackaged;
 
@@ -61,10 +61,16 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   // Stream local files for the renderer's <video>/<img>/<audio> elements.
-  // net.fetch handles HTTP-style range requests so video scrubbing works.
-  protocol.handle('media', (request) => {
-    return net.fetch(mediaUrlToFileUrl(request.url));
-  });
+  //
+  // Phase 5-8 — explicit Range support. The previous
+  // `net.fetch(file://)` indirection returned the whole file as a 200
+  // body, which Chromium's video decoder rejected for seekable MP4
+  // (the user's "영상 로딩 중..." hang). handleMediaRequest now parses
+  // the Range header and streams the requested byte slice with the
+  // proper 206 Partial Content headers — same shape an HTTP server
+  // would emit. Non-Range requests still get the full file but with
+  // Accept-Ranges so the decoder knows it can seek next.
+  protocol.handle('media', (request) => handleMediaRequest(request));
 
   registerFileHandlers(ipcMain, () => mainWindow);
   registerRenderHandlers(ipcMain, () => mainWindow);

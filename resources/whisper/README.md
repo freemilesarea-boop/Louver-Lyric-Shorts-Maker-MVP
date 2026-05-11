@@ -23,6 +23,21 @@ resources/whisper/
 The detector picks `ggml-base.bin` first, then `ggml-tiny.bin`. Other model
 files (small, medium, large) are not loaded by default.
 
+## Status by platform (Phase 5-8)
+
+| Platform        | How it gets here                                                                 |
+|-----------------|----------------------------------------------------------------------------------|
+| `linux-x64`     | Built statically from source by `scripts/fetch-whisper.sh` (cmake, ~3 min)       |
+| `darwin-arm64`  | Same — runs on the macOS CI runner OR locally on Apple Silicon                   |
+| `darwin-x64`    | Same — runs on an Intel macOS runner / host                                      |
+| `win32-x64`     | Pulled from upstream's `whisper-bin-x64.zip` GitHub release asset                |
+| `ggml-base.bin` | Downloaded from Hugging Face (~150 MB) by the same script                        |
+
+Cross-platform note: a Linux host **cannot** produce the macOS or Windows
+binaries. Each target platform must run `scripts/fetch-whisper.sh` on
+its own OS (or the CI matrix does it). The README still applies even if
+your dev box only has the linux-x64 artifacts on disk.
+
 ## Why this is empty in the repo
 
 Binary blobs are not committed to git. They are fetched / built at release

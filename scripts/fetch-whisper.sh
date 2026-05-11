@@ -116,7 +116,15 @@ fetch_prebuilt_or_build() {
     darwin-arm64|darwin-x64|linux-x64)
       # Build from source — upstream prebuilds for *nix aren't reliably
       # published. Requires cmake + make + a C++ compiler on the runner.
-      echo "fetch-whisper: building whisper.cpp $WHISPER_RELEASE from source for $PLATFORM"
+      #
+      # CRITICAL: -DBUILD_SHARED_LIBS=OFF. A default cmake build links
+      # against libwhisper.so + libggml*.so files in the build tree; if
+      # we copy only the executable into resources/ the runtime can't
+      # find its shared deps and `Whisper not found` errors back to the
+      # renderer. Static build folds everything into a single ~10-15 MB
+      # binary that doesn't need code-signing of any sidecar libraries
+      # (matters on macOS where Gatekeeper checks every .dylib).
+      echo "fetch-whisper: building whisper.cpp $WHISPER_RELEASE from source (static) for $PLATFORM"
       local src="$ROOT_DIR/.cache/whisper-cpp-${WHISPER_RELEASE}"
       if [ ! -d "$src" ]; then
         git clone --depth 1 --branch "$WHISPER_RELEASE" \
@@ -124,7 +132,11 @@ fetch_prebuilt_or_build() {
       fi
       (
         cd "$src"
-        cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_EXAMPLES=ON >/dev/null
+        rm -rf build
+        cmake -B build -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DGGML_STATIC=ON \
+          -DWHISPER_BUILD_EXAMPLES=ON >/dev/null
         cmake --build build --config Release --target whisper-cli -j
       )
       local built
@@ -135,6 +147,16 @@ fetch_prebuilt_or_build() {
       fi
       cp "$built" "$BIN_OUT"
       chmod +x "$BIN_OUT"
+      # Sanity check: ldd / otool should report zero non-system deps.
+      # We don't hard-fail on this (different `ldd` flavors disagree)
+      # but the log makes it easy to spot a regression.
+      if command -v ldd >/dev/null 2>&1; then
+        echo "fetch-whisper: deps reported by ldd:"
+        ldd "$BIN_OUT" || true
+      elif command -v otool >/dev/null 2>&1; then
+        echo "fetch-whisper: deps reported by otool -L:"
+        otool -L "$BIN_OUT" || true
+      fi
       ;;
   esac
 }
@@ -144,10 +166,17 @@ if [ ! -f "$BIN_OUT" ]; then
 fi
 
 # ---- Model ---------------------------------------------------------
+# Huggingface's CDN refuses curl's default UA with 403 ("anti-bot").
+# Pretend to be a stock browser; the model files are licensed for
+# redistribution (MIT) so this isn't a TOS issue.
 if [ ! -f "$MODEL_OUT" ]; then
   MODEL_URL="${WHISPER_MODEL_URL:-https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${WHISPER_MODEL}.bin}"
   echo "fetch-whisper: downloading model $MODEL_URL"
-  curl -fsSL --retry 3 -o "$MODEL_OUT" "$MODEL_URL"
+  curl -fSL --retry 3 \
+    -A 'Mozilla/5.0 (whisper-fetcher) curl' \
+    -o "$MODEL_OUT.part" \
+    "$MODEL_URL"
+  mv "$MODEL_OUT.part" "$MODEL_OUT"
 fi
 
 # ---- Sanity check + summary ----------------------------------------

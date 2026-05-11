@@ -89,10 +89,15 @@ export default function LivePreview(props: Props): JSX.Element {
   const [photo, setPhoto] = useState<ScenePhoto | null>(null);
   const [bgPhoto, setBgPhoto] = useState<ScenePhoto | null>(null);
   const [tNowSec, setTNowSec] = useState(0);
+  /** Phase 5-8 — surface video load failures + timeouts to the user
+   *  instead of sitting on "영상 로딩 중..." forever. Cleared whenever
+   *  the user picks a new src. */
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!props.imageDataUrl) {
       setPhoto(null);
+      setVideoError(null);
       return;
     }
     if (props.mainMediaKind === 'video') {
@@ -100,10 +105,18 @@ export default function LivePreview(props: Props): JSX.Element {
       // canvas drawImage paint the current frame each repaint. We copy
       // videoWidth/videoHeight onto the element's width/height so
       // renderScene's fitContain math (which reads .width/.height)
-      // works. The video plays muted on a loop so the canvas always has
-      // fresh frames; the time loop further down also bumps a tick at
-      // ~30fps so even on the slowest preview path the canvas keeps
+      // works. The video plays muted on a loop so the canvas always
+      // has fresh frames; the time loop further down also bumps a tick
+      // at ~30fps so even on the slowest preview path the canvas keeps
       // pulling new content out of the video element.
+      //
+      // Phase 5-8 — we now wait for `canplay` (not just `loadedmetadata`)
+      // before considering the video ready. metadata alone fires before
+      // any frame is decodable, so previous builds painted a blank
+      // canvas and the user saw "영상 로딩 중..." indefinitely while
+      // the decoder waited on Range data. A 10s watchdog surfaces a
+      // concrete error if loading stalls, so the user can re-pick the
+      // file or report it.
       const v = document.createElement('video');
       v.muted = true;
       v.loop = true;
@@ -111,19 +124,82 @@ export default function LivePreview(props: Props): JSX.Element {
       v.preload = 'auto';
       v.crossOrigin = 'anonymous';
       let cancelled = false;
-      const onMeta = () => {
+      setVideoError(null);
+
+      const debugSnapshot = (tag: string) => {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[video:${tag}]`,
+          'src=',
+          props.imageDataUrl?.slice(0, 60),
+          'readyState=',
+          v.readyState,
+          'networkState=',
+          v.networkState,
+          'videoWidth=',
+          v.videoWidth,
+          'videoHeight=',
+          v.videoHeight,
+          'currentTime=',
+          v.currentTime,
+          'duration=',
+          v.duration,
+          'errorCode=',
+          v.error?.code,
+        );
+      };
+
+      const onCanPlay = () => {
         if (cancelled) return;
         v.width = v.videoWidth;
         v.height = v.videoHeight;
-        v.play().catch(() => undefined);
+        v.play().catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn('[video] play() rejected:', e);
+        });
         setPhoto(v);
+        setVideoError(null);
+        debugSnapshot('canplay');
       };
-      v.addEventListener('loadedmetadata', onMeta);
-      v.onerror = () => setPhoto(null);
+      v.addEventListener('loadedmetadata', () => debugSnapshot('loadedmetadata'));
+      v.addEventListener('loadeddata', () => debugSnapshot('loadeddata'));
+      v.addEventListener('canplay', onCanPlay);
+      v.addEventListener('error', () => {
+        if (cancelled) return;
+        const e = v.error;
+        const msg = e
+          ? `code=${e.code} ${e.message || mediaErrorLabel(e.code)}`
+          : 'unknown';
+        // eslint-disable-next-line no-console
+        console.error('[video] error event:', msg);
+        debugSnapshot('error');
+        setVideoError(`영상 로딩 실패 (${msg})`);
+        setPhoto(null);
+      });
       v.src = props.imageDataUrl;
+      // Force the network start — some Chromium builds defer until the
+      // element is attached to the DOM, which we never do.
+      v.load();
+
+      // 10s watchdog. If canplay hasn't fired by then, assume the
+      // stream isn't decoding and tell the user concretely. We probe
+      // `v.readyState` directly (canonical source of truth) instead of
+      // the React `photo` state which would be stale inside this
+      // closure.
+      const watchdog = window.setTimeout(() => {
+        if (cancelled) return;
+        debugSnapshot('watchdog');
+        if (v.readyState < 3 /* HAVE_FUTURE_DATA */) {
+          setVideoError(
+            '영상 로딩이 너무 오래 걸려요. 파일을 다시 선택하거나 다른 영상을 시도해주세요.',
+          );
+        }
+      }, 10000);
+
       return () => {
         cancelled = true;
-        v.removeEventListener('loadedmetadata', onMeta);
+        window.clearTimeout(watchdog);
+        v.removeEventListener('canplay', onCanPlay);
         try {
           v.pause();
         } catch {
@@ -139,7 +215,11 @@ export default function LivePreview(props: Props): JSX.Element {
     // loop below also engages for `gif`).
     const img = new Image();
     img.onload = () => setPhoto(img);
-    img.onerror = () => setPhoto(null);
+    img.onerror = () => {
+      // eslint-disable-next-line no-console
+      console.error('[image] load failed for src=', props.imageDataUrl?.slice(0, 60));
+      setPhoto(null);
+    };
     img.src = props.imageDataUrl;
   }, [props.imageDataUrl, props.mainMediaKind]);
 
@@ -330,13 +410,22 @@ export default function LivePreview(props: Props): JSX.Element {
         className="max-h-full max-w-full rounded-2xl shadow-2xl"
         style={{ aspectRatio: '9 / 16', height: '100%', objectFit: 'contain' }}
       />
-      {/* Phase 5-7 — explicit "loading video" indicator while metadata
-       *  is still in flight. The canvas would otherwise paint just the
-       *  background card and look like the user picked a blank file. */}
-      {props.mainMediaKind === 'video' && props.imageDataUrl && !photo && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-white/60">
-          <div className="rounded-md bg-ink-950/70 px-3 py-1.5">
-            영상 로딩 중...
+      {/* Phase 5-7/8 — concrete state surface for video kind. The
+       *  canvas would otherwise paint just the background card and the
+       *  user would think they picked a blank file. We now also pop a
+       *  red banner if the 10s watchdog fires or the element emits a
+       *  hard `error` event. */}
+      {props.mainMediaKind === 'video' && props.imageDataUrl && (videoError || !photo) && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-xs">
+          <div
+            className={[
+              'max-w-xs rounded-md px-3 py-2 text-center',
+              videoError
+                ? 'bg-red-500/85 text-white shadow-lg'
+                : 'bg-ink-950/70 text-white/70',
+            ].join(' ')}
+          >
+            {videoError ?? '영상 로딩 중...'}
           </div>
         </div>
       )}
@@ -376,6 +465,20 @@ export default function LivePreview(props: Props): JSX.Element {
  * active.
  */
 type LayoutKey = 'lyric' | 'meta' | 'waveform';
+
+/**
+ * Friendly label for HTMLMediaElement.error.code values. Mirrors the
+ * HTML spec — codes 1-4 are the only values that ever surface.
+ */
+function mediaErrorLabel(code: number | undefined): string {
+  switch (code) {
+    case 1: return 'aborted';
+    case 2: return 'network error';
+    case 3: return 'decode error (codec not supported?)';
+    case 4: return 'source not supported (mime / format mismatch)';
+    default: return 'unknown';
+  }
+}
 
 function DragOverlay(props: {
   canvasRef: React.RefObject<HTMLCanvasElement>;
