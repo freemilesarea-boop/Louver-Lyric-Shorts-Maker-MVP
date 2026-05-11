@@ -2,10 +2,37 @@ import { useProjectStore } from '../store/projectStore';
 import { api } from '../lib/api';
 import { useState } from 'react';
 import HelpPanel from '../components/HelpPanel';
+import type { MediaKind } from '../../shared/types';
+
+function detectMediaKind(path: string): MediaKind {
+  const ext = path.toLowerCase().split('.').pop() ?? '';
+  if (ext === 'gif') return 'gif';
+  if (['mp4', 'mov', 'm4v', 'webm'].includes(ext)) return 'video';
+  return 'image';
+}
+
+/**
+ * Resolve the renderer-side preview src for a file. Image extensions go
+ * through readAsDataURL (cheap canvas painting, survives offline use);
+ * gif/video go through `media://` so we never base64 huge files. If a
+ * supposedly-image file blows the 10MB DataURL cap, we fall back to
+ * `media://` instead of failing. Phase 5-6.1.
+ */
+async function resolveMediaSrc(path: string, kind: MediaKind): Promise<string> {
+  if (kind !== 'image') {
+    return api().toMediaUrl(path);
+  }
+  try {
+    return await api().readAsDataURL(path);
+  } catch {
+    return api().toMediaUrl(path);
+  }
+}
 
 export default function StartScreen(): JSX.Element {
   const imagePath = useProjectStore((s) => s.imagePath);
   const imageDataUrl = useProjectStore((s) => s.imageDataUrl);
+  const mainMediaKind = useProjectStore((s) => s.mainMediaKind);
   const backgroundImagePath = useProjectStore((s) => s.backgroundImagePath);
   const backgroundImageDataUrl = useProjectStore((s) => s.backgroundImageDataUrl);
   const audioPath = useProjectStore((s) => s.audioPath);
@@ -21,20 +48,9 @@ export default function StartScreen(): JSX.Element {
     try {
       const path = await api().pickImage();
       if (!path) return;
-      // Phase 5-6: file picker now accepts gif + video extensions too.
-      // We detect the kind from the lowercase extension and stash it in
-      // the store so preview + export branch on it. Phase 5-7 will wire
-      // up the full video render path; for now mp4/mov/webm/m4v go
-      // through the GIF branch (ffmpeg -stream_loop -1) as a stop-gap.
-      const ext = path.toLowerCase().split('.').pop() ?? '';
-      const kind =
-        ext === 'gif'
-          ? 'gif'
-          : ['mp4', 'mov', 'm4v', 'webm'].includes(ext)
-            ? 'video'
-            : 'image';
-      const dataUrl = await api().readAsDataURL(path);
-      setImage(path, dataUrl, kind);
+      const kind = detectMediaKind(path);
+      const src = await resolveMediaSrc(path, kind);
+      setImage(path, src, kind);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -45,8 +61,12 @@ export default function StartScreen(): JSX.Element {
     try {
       const path = await api().pickImage();
       if (!path) return;
-      const dataUrl = await api().readAsDataURL(path);
-      setBackgroundImage(path, dataUrl);
+      // Background should ideally be a still image, but the picker
+      // accepts gif/video too — route them through media:// so a stray
+      // pick doesn't crash the IPC.
+      const kind = detectMediaKind(path);
+      const src = await resolveMediaSrc(path, kind);
+      setBackgroundImage(path, src);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -62,8 +82,10 @@ export default function StartScreen(): JSX.Element {
       const path = await api().pickAudio();
       if (!path) return;
       const meta = await api().probeAudio(path);
-      const dataUrl = await api().readAsDataURL(path);
-      setAudio(path, dataUrl, meta.durationSec);
+      // Audio always goes through media:// — a single 50MB MP3 base64'd
+      // is ~67MB and a long WAV easily exceeds V8's string cap.
+      const src = await api().toMediaUrl(path);
+      setAudio(path, src, meta.durationSec);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -91,7 +113,19 @@ export default function StartScreen(): JSX.Element {
             onClick={onPickImage}
             preview={
               imageDataUrl ? (
-                <img src={imageDataUrl} alt="" className="h-full w-full object-cover" />
+                mainMediaKind === 'video' ? (
+                  <video
+                    src={imageDataUrl}
+                    className="h-full w-full object-cover"
+                    muted
+                    loop
+                    autoPlay
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  <img src={imageDataUrl} alt="" className="h-full w-full object-cover" />
+                )
               ) : null
             }
             badge={imagePath ? '✓ 선택됨' : null}

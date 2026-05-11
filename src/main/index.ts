@@ -1,9 +1,27 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron';
 import { join } from 'node:path';
 import { registerFileHandlers } from './ipc/files';
 import { registerRenderHandlers } from './ipc/render';
+import { mediaUrlToFileUrl } from './ipc/mediaUrl';
 
 const isDev = !app.isPackaged;
+
+// Phase 5-6.1: privileged `media://` scheme so the renderer can stream
+// large gif / video / audio files via <img>/<video>/<audio> src without
+// going through the V8-string-capped DataURL path. Must be declared
+// BEFORE app.ready, hence at module top-level.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'media',
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true,
+      bypassCSP: true,
+    },
+  },
+]);
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -42,6 +60,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Stream local files for the renderer's <video>/<img>/<audio> elements.
+  // net.fetch handles HTTP-style range requests so video scrubbing works.
+  protocol.handle('media', (request) => {
+    return net.fetch(mediaUrlToFileUrl(request.url));
+  });
+
   registerFileHandlers(ipcMain, () => mainWindow);
   registerRenderHandlers(ipcMain, () => mainWindow);
 

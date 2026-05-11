@@ -22,6 +22,16 @@ import { paintPlayerChrome } from './playerChrome';
 export const SCENE_W = 1080;
 export const SCENE_H = 1920;
 
+/** Anything drawImage can paint that also exposes width/height for
+ *  fit-contain calculations. HTMLVideoElement only has meaningful
+ *  width/height once we copy videoWidth/videoHeight onto it (see
+ *  LivePreview's video loader). */
+export type ScenePhoto =
+  | HTMLImageElement
+  | HTMLVideoElement
+  | HTMLCanvasElement
+  | ImageBitmap;
+
 export interface ResolvedColors {
   en: string;
   ko: string;
@@ -315,13 +325,15 @@ export interface RenderSceneOpts {
   lyric?: LyricLine | null;
   trackTitle?: string;
   artistName?: string;
-  /** For preview only — the main photo as an HTMLImageElement. Drawn as
-   *  the centered foreground card. */
-  photo?: HTMLImageElement | null;
+  /** For preview only — the main photo source. HTMLImageElement for
+   *  still / GIF, HTMLVideoElement for video kind (Phase 5-6.1). Both
+   *  are CanvasImageSource and expose `.width/.height` (we set
+   *  width=videoWidth on the video at metadata-load time). */
+  photo?: ScenePhoto | null;
   /** Optional separate background image. When set, drawn cover-cropped +
    *  blurred behind the foreground. When null, `photo` doubles as the
    *  background (legacy behavior). */
-  backgroundPhoto?: HTMLImageElement | null;
+  backgroundPhoto?: ScenePhoto | null;
   /** User style tweaks applied on top of template defaults. */
   styleOverrides?: import('./types').StyleOverrides | null;
   /** Per-element drag positions (canonical 1080×1920). When set, the

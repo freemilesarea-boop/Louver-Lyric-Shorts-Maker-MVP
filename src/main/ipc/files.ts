@@ -18,6 +18,7 @@ import {
   type SaveInput,
 } from '../storage/customPresets';
 import { loadBundledFonts } from '../storage/fontFiles';
+import { pathToMediaUrl, readImageAsDataURL } from './mediaUrl';
 import type { AudioMeta, LanguageCode, LyricLine } from '../../shared/types';
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp'];
@@ -139,11 +140,17 @@ export function registerFileHandlers(
 
   ipcMain.handle('fonts:loadBundled', () => loadBundledFonts());
 
-  ipcMain.handle('files:readAsDataURL', async (_e, path: string) => {
-    const data = await fs.readFile(path);
-    const ext = path.split('.').pop()?.toLowerCase() ?? '';
-    const mime = guessMime(ext);
-    return `data:${mime};base64,${data.toString('base64')}`;
+  // Phase 5-6.1: image-only + 10MB cap. Renderer must use toMediaUrl for
+  // gif/video/audio so we don't blow V8's max-string limit.
+  ipcMain.handle('files:readAsDataURL', (_e, path: string) => {
+    return readImageAsDataURL(path);
+  });
+
+  // Returns a `media://` URL the renderer can drop into <img>/<video>/
+  // <audio> src. Backed by the privileged scheme registered in main/index
+  // — net.fetch streams the file directly, no base64 in JS land.
+  ipcMain.handle('files:toMediaUrl', (_e, path: string) => {
+    return pathToMediaUrl(path);
   });
 
   ipcMain.handle('files:defaultOutputDir', async () => {
@@ -163,32 +170,6 @@ export function registerFileHandlers(
   });
 
   ipcMain.handle('files:basename', (_e, p: string) => basename(p));
-}
-
-function guessMime(ext: string): string {
-  switch (ext) {
-    case 'jpg':
-    case 'jpeg':
-      return 'image/jpeg';
-    case 'png':
-      return 'image/png';
-    case 'webp':
-      return 'image/webp';
-    case 'mp3':
-      return 'audio/mpeg';
-    case 'wav':
-      return 'audio/wav';
-    case 'm4a':
-      return 'audio/mp4';
-    case 'aac':
-      return 'audio/aac';
-    case 'flac':
-      return 'audio/flac';
-    case 'ogg':
-      return 'audio/ogg';
-    default:
-      return 'application/octet-stream';
-  }
 }
 
 function probeDuration(path: string): Promise<AudioMeta> {

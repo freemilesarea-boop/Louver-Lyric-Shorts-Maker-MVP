@@ -89,7 +89,12 @@ export interface LyricShortsAPI {
   deleteCustomPreset(id: string): Promise<{ ok: boolean }>;
 
   loadBundledFonts(): Promise<BundledFontPayload[]>;
+  /** Image-only, ≤10MB. Throws for gif/video/audio or oversized files;
+   *  callers should fall back to {@link toMediaUrl} for those. */
   readAsDataURL(path: string): Promise<string>;
+  /** Returns a `media://` URL backed by the privileged Electron protocol.
+   *  Safe for arbitrary file sizes — streamed, not buffered. */
+  toMediaUrl(path: string): Promise<string>;
   fileExists(path: string): Promise<boolean>;
   basename(path: string): Promise<string>;
 

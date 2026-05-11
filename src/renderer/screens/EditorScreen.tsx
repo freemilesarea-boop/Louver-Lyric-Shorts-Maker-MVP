@@ -200,6 +200,7 @@ export default function EditorScreen(): JSX.Element {
         <div className="flex min-h-0 w-full flex-1 items-center justify-center">
           <LivePreview
             imageDataUrl={state.imageDataUrl}
+            mainMediaKind={state.mainMediaKind}
             backgroundImageDataUrl={state.backgroundImageDataUrl}
             template={template}
             language={language}

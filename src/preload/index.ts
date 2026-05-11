@@ -19,6 +19,7 @@ const api: LyricShortsAPI = {
 
   loadBundledFonts: () => ipcRenderer.invoke('fonts:loadBundled'),
   readAsDataURL: (path: string) => ipcRenderer.invoke('files:readAsDataURL', path),
+  toMediaUrl: (path: string) => ipcRenderer.invoke('files:toMediaUrl', path),
   fileExists: (path: string) => ipcRenderer.invoke('files:exists', path),
   basename: (path: string) => ipcRenderer.invoke('files:basename', path),
 

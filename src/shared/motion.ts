@@ -66,7 +66,7 @@ export function isStaticMotion(preset: MotionPreset): boolean {
  */
 export function drawImageWithMotion(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement | HTMLCanvasElement,
+  img: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | ImageBitmap,
   dx: number,
   dy: number,
   dw: number,

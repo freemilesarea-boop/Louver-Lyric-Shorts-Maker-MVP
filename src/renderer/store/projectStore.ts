@@ -57,6 +57,10 @@ interface ProjectState {
    *  field is named `imagePath` for backwards-compat — see
    *  `mainMediaKind` for what's actually in there. */
   imagePath: string | null;
+  /** Renderable src for <img>/<video> elements. Phase 5-6.1: this is
+   *  a data: URL only for small still images; gif / video / oversized
+   *  images go through the privileged `media://` scheme so we never
+   *  base64-encode large files (V8 caps single-string size at ~512MB). */
   imageDataUrl: string | null;
   /** Phase 5-6: kind of the main media. Drives how preview + export
    *  feed it to ffmpeg/canvas. Defaults to 'image' for legacy/empty

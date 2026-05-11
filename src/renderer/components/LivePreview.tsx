@@ -10,7 +10,7 @@ import type {
   ReactiveMode,
   Template,
 } from '../../shared/types';
-import { renderScene, SCENE_W, SCENE_H } from '../../shared/scene';
+import { renderScene, SCENE_W, SCENE_H, type ScenePhoto } from '../../shared/scene';
 import { isStaticMotion } from '../../shared/motion';
 import {
   REST_STATE,
@@ -25,6 +25,11 @@ import { sliceLyrics } from '../lib/overlays';
 
 interface Props {
   imageDataUrl: string | null;
+  /** Phase 5-6.1: kind of the main media src above. Drives whether we
+   *  load it as an HTMLImageElement (image/gif) or HTMLVideoElement
+   *  (video). The src may be a `data:` URL (small images) or a
+   *  `media://` URL (everything else); both element types accept both. */
+  mainMediaKind?: import('../../shared/types').MediaKind;
   /** Optional separate background image. When null the main image
    *  doubles as the background (legacy behavior). */
   backgroundImageDataUrl?: string | null;
@@ -81,8 +86,8 @@ const PREVIEW_FRAME_INTERVAL_MS = 1000 / 30;
  */
 export default function LivePreview(props: Props): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [photo, setPhoto] = useState<HTMLImageElement | null>(null);
-  const [bgPhoto, setBgPhoto] = useState<HTMLImageElement | null>(null);
+  const [photo, setPhoto] = useState<ScenePhoto | null>(null);
+  const [bgPhoto, setBgPhoto] = useState<ScenePhoto | null>(null);
   const [tNowSec, setTNowSec] = useState(0);
 
   useEffect(() => {
@@ -90,11 +95,47 @@ export default function LivePreview(props: Props): JSX.Element {
       setPhoto(null);
       return;
     }
+    if (props.mainMediaKind === 'video') {
+      // Video kind: stream into an off-DOM HTMLVideoElement and let
+      // canvas drawImage paint the current frame each repaint. We copy
+      // videoWidth/videoHeight onto the element's width/height so
+      // renderScene's fitContain math (which reads .width/.height) works.
+      const v = document.createElement('video');
+      v.muted = true;
+      v.loop = true;
+      v.playsInline = true;
+      v.preload = 'auto';
+      v.crossOrigin = 'anonymous';
+      let cancelled = false;
+      const onMeta = () => {
+        if (cancelled) return;
+        v.width = v.videoWidth;
+        v.height = v.videoHeight;
+        v.play().catch(() => undefined);
+        setPhoto(v);
+      };
+      v.addEventListener('loadedmetadata', onMeta);
+      v.onerror = () => setPhoto(null);
+      v.src = props.imageDataUrl;
+      return () => {
+        cancelled = true;
+        v.removeEventListener('loadedmetadata', onMeta);
+        try {
+          v.pause();
+        } catch {
+          /* noop */
+        }
+        v.removeAttribute('src');
+        v.load();
+      };
+    }
+    // image / gif: HTMLImageElement handles both, including animated
+    // GIFs (Chromium animates the bitmap as we drawImage in rAF).
     const img = new Image();
     img.onload = () => setPhoto(img);
     img.onerror = () => setPhoto(null);
     img.src = props.imageDataUrl;
-  }, [props.imageDataUrl]);
+  }, [props.imageDataUrl, props.mainMediaKind]);
 
   useEffect(() => {
     if (!props.backgroundImageDataUrl) {
@@ -125,7 +166,8 @@ export default function LivePreview(props: Props): JSX.Element {
       !isStaticFx(fxConfigForActiveCheck) ||
       props.template.showWaveform ||
       props.template.progressBarStyle !== 'none' ||
-      chunks.length > 1;
+      chunks.length > 1 ||
+      props.mainMediaKind === 'video';
     if (!animationsActive) {
       setTNowSec(0);
       return;
@@ -153,6 +195,7 @@ export default function LivePreview(props: Props): JSX.Element {
     props.template.showWaveform,
     props.template.progressBarStyle,
     chunks.length,
+    props.mainMediaKind,
   ]);
 
   // Pick the chunk active at tNowSec (or use forcedChunkIndex when scrubbing).
