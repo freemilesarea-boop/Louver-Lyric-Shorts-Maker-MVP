@@ -79,6 +79,16 @@ export interface WhisperSelfCheckInfo {
   expectedBinPath: string | null;
   binFound: boolean;
   binExecutable: boolean;
+  /** Phase 5-10.1 — probe spawn exit code (e.g. Windows loader errors:
+   *  -1073741515 / 0xC0000135 = ERROR_DLL_NOT_FOUND). undefined when
+   *  the binary couldn't even be spawned (file missing, permissions). */
+  binProbeExitCode?: number;
+  /** Last 800 chars of the probe's stderr — contains the actual
+   *  Windows loader error message for DLL-not-found cases. */
+  binProbeStderr?: string;
+  /** Phase 5-10.1 — true if the resolved binary path points inside
+   *  app.asar. Always false in a correctly-packaged build. */
+  binInsideAsar: boolean;
   expectedModelPath: string | null;
   modelFound: boolean;
   modelSizeBytes: number;

@@ -39,6 +39,12 @@ export type TranscribeBinary =
  * detectWhisperSelfCheck (and the audio:whisperAvailable IPC) so the
  * renderer can show a precise "어떤 파일이 빠졌는지" banner instead
  * of a generic "Whisper가 없어요" message.
+ *
+ * Phase 5-10.1 — also carries probe failure details when the binary
+ * exists but won't run. Common Windows causes: Mark-of-the-Web stream
+ * blocking SmartScreen, missing MSVC Runtime DLL, missing OpenBLAS DLL,
+ * or the binary accidentally landed inside app.asar (where Windows
+ * can't exec it directly). Each gets its own visible reason now.
  */
 export interface WhisperSelfCheck {
   /** Final verdict — true only when binary + model are both usable. */
@@ -49,6 +55,20 @@ export interface WhisperSelfCheck {
   binFound: boolean;
   /** True when `bin --help` exited 0 (file exists + is executable). */
   binExecutable: boolean;
+  /** Phase 5-10.1 — exit code from the probe spawn. Undefined when we
+   *  never spawned (binary missing). Negative when the process was
+   *  killed by signal. */
+  binProbeExitCode?: number;
+  /** Phase 5-10.1 — last 800 chars of the probe's stderr. The Windows
+   *  loader writes "The code execution cannot proceed because X.dll
+   *  was not found" here when an MSVC / OpenBLAS dependency is missing
+   *  — that's the actionable info the user needs. */
+  binProbeStderr?: string;
+  /** Phase 5-10.1 — true when the resolved binary path contains
+   *  "app.asar". Should ALWAYS be false in production: extraResources
+   *  unpacks it outside the asar archive. When true the packaging is
+   *  broken — Windows can't exec a file that's inside a zip archive. */
+  binInsideAsar: boolean;
   /** Resolved bundled model path, even if absent. */
   expectedModelPath: string | null;
   /** True when the model file exists. */
@@ -146,7 +166,42 @@ export function detectWhisperSelfCheck(force = false): WhisperSelfCheck {
   const expectedBinPath = bundledWhisperPath();
   const expectedModelPath = bundledWhisperModelPath();
   const binFound = expectedBinPath != null && existsSync(expectedBinPath);
-  const binExecutable = binFound ? probeBinary(expectedBinPath!) : false;
+
+  // Phase 5-10.1 — asar membership check. extraResources is supposed
+  // to land the binary OUTSIDE app.asar (at process.resourcesPath/
+  // whisper/...). If the path contains "app.asar" the packaging is
+  // broken: Windows can't exec a file that lives inside a zip-style
+  // archive. We flag this regardless of whether binFound is true so
+  // the user / dev sees the structural problem.
+  const binInsideAsar = expectedBinPath
+    ? /app\.asar(?![.\\/])/i.test(expectedBinPath) ||
+      /[\\/]app\.asar[\\/]/i.test(expectedBinPath)
+    : false;
+
+  // First probe.
+  let probe = binFound
+    ? probeBinaryDetailed(expectedBinPath!)
+    : { ok: false };
+
+  // Phase 5-10.1 — on Windows, attempt a one-shot Unblock-File if the
+  // probe failed but the binary exists. Many Windows installers ship
+  // executables with Mark-of-the-Web attached; PowerShell's
+  // Unblock-File strips the alternate stream that SmartScreen / some
+  // AV uses to block execution. We only attempt it once per
+  // self-check call to avoid retry storms.
+  if (
+    binFound &&
+    !probe.ok &&
+    !binInsideAsar &&
+    process.platform === 'win32' &&
+    expectedBinPath
+  ) {
+    const dirName = expectedBinPath.replace(/[\\/][^\\/]+$/, '');
+    tryUnblockOnWindows(dirName);
+    probe = probeBinaryDetailed(expectedBinPath);
+  }
+
+  const binExecutable = probe.ok;
   const modelFound = expectedModelPath != null && existsSync(expectedModelPath);
   let modelSizeBytes = 0;
   if (modelFound && expectedModelPath) {
@@ -161,20 +216,39 @@ export function detectWhisperSelfCheck(force = false): WhisperSelfCheck {
   if (force) detectWhisperBinary(true);
 
   let ok = binFound && binExecutable && modelFound;
-  // Sanity-check model size — ggml-tiny is ~75 MB, ggml-base ~140 MB.
-  // Anything smaller than 50 MB is almost certainly truncated.
+  // Sanity-check model size.
   if (ok && modelSizeBytes < 50 * 1024 * 1024) {
     ok = false;
   }
+  if (ok && binInsideAsar) {
+    ok = false;
+  }
+
   let reason = '';
-  if (!binFound) {
+  if (binInsideAsar) {
+    reason =
+      `내장 AI 엔진이 app.asar 내부에 잘못 패키징되었어요 (${expectedBinPath}). ` +
+      `extraResources / asarUnpack 설정이 누락된 빌드일 가능성이 큽니다. ` +
+      `앱을 재설치하거나 개발자에게 알려주세요.`;
+  } else if (!binFound) {
     reason =
       `내장 AI 엔진 실행 파일을 찾을 수 없어요 (${expectedBinPath ?? '(no path)'}). ` +
       `앱을 재설치하거나 패키징 단계의 fetch-whisper.sh가 실행됐는지 확인해주세요.`;
   } else if (!binExecutable) {
+    // Phase 5-10.1 — name the actual loader error.
+    const code = probe.exitCode;
+    const errLine = (probe.stderrTail ?? '').split(/\r?\n/).find((l) => l.trim().length > 0) ?? '';
+    const dllHint = /(\.dll|missing|not found|cannot|could not|VCRUNTIME|MSVCP)/i.test(
+      errLine,
+    );
     reason =
-      `내장 AI 엔진은 있지만 실행할 수 없어요 (${expectedBinPath}). ` +
-      `파일 권한 또는 백신/Gatekeeper가 차단하지 않았는지 확인해주세요.`;
+      `내장 AI 엔진은 있지만 실행에 실패했어요 (${expectedBinPath}). ` +
+      `exit=${code ?? 'spawn-error'} ` +
+      (errLine ? `stderr="${errLine.slice(0, 200)}" ` : '') +
+      (dllHint
+        ? '필요한 DLL 또는 Visual C++ Redistributable가 누락된 것 같아요. '
+        : 'SmartScreen / 백신이 차단했거나 파일이 손상되었을 가능성이 있어요. ') +
+      '문제가 계속되면 앱을 재설치해주세요.';
   } else if (!modelFound) {
     reason =
       `AI 엔진은 있지만 모델 파일이 빠져 있어요 (${expectedModelPath ?? '(no model path)'}). ` +
@@ -190,6 +264,9 @@ export function detectWhisperSelfCheck(force = false): WhisperSelfCheck {
     expectedBinPath,
     binFound,
     binExecutable,
+    binProbeExitCode: probe.exitCode,
+    binProbeStderr: probe.stderrTail,
+    binInsideAsar,
     expectedModelPath,
     modelFound,
     modelSizeBytes,
@@ -260,15 +337,66 @@ export function bundledWhisperModelPath(): string | null {
 }
 
 function probeBinary(bin: string): boolean {
+  return probeBinaryDetailed(bin).ok;
+}
+
+/**
+ * Phase 5-10.1 — verbose probe. Captures spawnSync's exit code +
+ * stderr tail so the self-check can report the actual loader error
+ * (missing DLL, MOTW block, etc.) instead of a generic "not
+ * executable".
+ */
+function probeBinaryDetailed(bin: string): {
+  ok: boolean;
+  exitCode?: number;
+  signal?: NodeJS.Signals;
+  stderrTail?: string;
+  spawnError?: string;
+} {
   try {
     const r = spawnSync(bin, ['--help'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 4000,
+      windowsHide: true,
+    });
+    if (r.error) {
+      return { ok: false, spawnError: r.error.message };
+    }
+    const stderrTail = (r.stderr?.toString('utf8') ?? '').slice(-800);
+    return {
+      ok: r.status === 0,
+      exitCode: r.status ?? undefined,
+      signal: (r.signal as NodeJS.Signals | null) ?? undefined,
+      stderrTail,
+    };
+  } catch (e) {
+    return { ok: false, spawnError: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Phase 5-10.1 — Windows-only. When the bundled binary fails to run,
+ * try stripping the Mark-of-the-Web stream that SmartScreen / AV uses
+ * to block downloaded executables. The PowerShell `Unblock-File`
+ * cmdlet does this; we wildcard it across the directory so the
+ * companion DLLs get unblocked too. Best-effort: if PowerShell isn't
+ * available the call exits silently and the existing diagnostic
+ * still surfaces.
+ */
+function tryUnblockOnWindows(binDir: string): void {
+  if (process.platform !== 'win32') return;
+  try {
+    const ps = 'powershell.exe';
+    const cmd = `Get-ChildItem -Path "${binDir}" -Recurse -Include *.exe,*.dll | Unblock-File`;
+    spawnSync(ps, ['-NoProfile', '-NonInteractive', '-Command', cmd], {
       stdio: ['ignore', 'ignore', 'ignore'],
       timeout: 4000,
       windowsHide: true,
     });
-    return r.status === 0;
+    // eslint-disable-next-line no-console
+    console.log('[whisper:selfcheck] attempted Unblock-File on', binDir);
   } catch {
-    return false;
+    // ignore — best-effort
   }
 }
 

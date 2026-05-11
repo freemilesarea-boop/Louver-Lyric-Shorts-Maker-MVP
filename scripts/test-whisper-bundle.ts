@@ -81,6 +81,43 @@ async function main(): Promise<void> {
     ok('selfCheck.reason mentions 실행 파일',
       /실행 파일/.test(sc0.reason),
       `reason=${sc0.reason}`);
+    // Phase 5-10.1 — no probe was run (binary missing) so exit code
+    // should be undefined.
+    ok('selfCheck.binProbeExitCode === undefined when binary missing',
+      sc0.binProbeExitCode === undefined);
+    ok('selfCheck.binInsideAsar === false when path is plain temp dir',
+      sc0.binInsideAsar === false);
+
+    // ---- Sub-test 1b: drop a binary that EXITS NON-ZERO with stderr
+    //                   (simulates Windows MOTW block / missing DLL).
+    //                   selfCheck must capture both the exit code AND
+    //                   the stderr tail. This is the diagnostic the
+    //                   user / dev needs to root-cause on a real
+    //                   Windows install.
+    const failingScript =
+      process.platform === 'win32'
+        ? '@echo off\r\necho fake-dll-missing 1>&2\r\nexit /b 7\r\n'
+        : '#!/bin/sh\necho "fake-dll-missing" >&2\nexit 7\n';
+    await fs.writeFile(binPath, failingScript);
+    await fs.chmod(binPath, 0o755);
+    const sc1b = mod.detectWhisperSelfCheck(true);
+    ok('failing binary → binFound true', sc1b.binFound === true);
+    ok('failing binary → binExecutable false', sc1b.binExecutable === false);
+    ok('failing binary → binProbeExitCode === 7',
+      sc1b.binProbeExitCode === 7,
+      `got=${sc1b.binProbeExitCode}`);
+    ok('failing binary → stderr tail captured',
+      /fake-dll-missing/.test(sc1b.binProbeStderr ?? ''),
+      `tail=${(sc1b.binProbeStderr ?? '').trim().slice(0, 80)}`);
+    ok('failing binary → reason mentions exit code',
+      /exit=7/.test(sc1b.reason),
+      `reason=${sc1b.reason}`);
+    ok('failing binary → reason names the stderr line',
+      /fake-dll-missing/.test(sc1b.reason),
+      `reason=${sc1b.reason}`);
+    // Remove the failing binary so the next sub-test can install the
+    // clean one.
+    await fs.rm(binPath);
 
     // Set PATH to /nonexistent for the rest of the sub-tests to
     // confirm PATH continues to be ignored even when intentionally
@@ -110,6 +147,25 @@ async function main(): Promise<void> {
       r2 !== null && r2.kind === 'whisper-cpp' && r2.bin === binPath,
       `got=${JSON.stringify(r2)}`,
     );
+
+    // Phase 5-10.1 — self-check on a healthy bundled binary should
+    // report ok-up-to-binary. Model is still absent at this point so
+    // overall ok=false, but binExecutable must be true and reason
+    // must point at the missing model, not the binary.
+    const scWithBin = mod.detectWhisperSelfCheck(true);
+    ok('selfCheck.binFound === true after dropping fake binary',
+      scWithBin.binFound === true);
+    ok('selfCheck.binExecutable === true (probe succeeded)',
+      scWithBin.binExecutable === true);
+    ok('selfCheck.binInsideAsar === false (path is outside asar)',
+      scWithBin.binInsideAsar === false);
+    ok('selfCheck.binProbeExitCode === 0 (--help returned 0)',
+      scWithBin.binProbeExitCode === 0);
+    ok('selfCheck.modelFound === false (model not dropped yet)',
+      scWithBin.modelFound === false);
+    ok('reason mentions 모델 파일 (the actual gap)',
+      /모델 파일/.test(scWithBin.reason),
+      `reason=${scWithBin.reason}`);
 
     // ---- Sub-test 3: drop a fake ggml-base.bin (just empty file —
     //                  the lookup only checks existsSync).

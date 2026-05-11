@@ -154,7 +154,7 @@ export default function TranscribeButton(): JSX.Element {
                 {selfCheck.binFound
                   ? selfCheck.binExecutable
                     ? '✓ 발견 + 실행 가능'
-                    : '⚠ 발견했지만 실행 권한 없음'
+                    : '⚠ 발견했지만 실행 실패'
                   : '✗ 없음'}
                 {selfCheck.expectedBinPath && (
                   <span className="ml-1 font-mono text-[10px] text-yellow-200/60">
@@ -162,6 +162,29 @@ export default function TranscribeButton(): JSX.Element {
                   </span>
                 )}
               </li>
+              {/* Phase 5-10.1 — surface the loader error (DLL missing,
+                *  MOTW block, etc.) directly. The exit code + stderr
+                *  line is what the user / dev needs to root-cause on
+                *  a Windows install. */}
+              {selfCheck.binFound && !selfCheck.binExecutable && (
+                <li className="text-yellow-200/60">
+                  실행 결과:{' '}
+                  <span className="font-mono">
+                    exit={selfCheck.binProbeExitCode ?? 'spawn-error'}
+                  </span>
+                  {selfCheck.binProbeStderr && (
+                    <div className="mt-0.5 max-h-20 overflow-auto rounded bg-yellow-500/10 px-1.5 py-0.5 font-mono text-[10px] leading-tight text-yellow-100/70 whitespace-pre-wrap">
+                      {selfCheck.binProbeStderr.trim().slice(0, 400)}
+                    </div>
+                  )}
+                </li>
+              )}
+              {selfCheck.binInsideAsar && (
+                <li className="text-yellow-200/60">
+                  ⚠ 경로가 app.asar 내부입니다 — 패키징 설정에서
+                  extraResources / asarUnpack가 빠진 빌드입니다.
+                </li>
+              )}
               <li>
                 모델 파일:{' '}
                 {selfCheck.modelFound
