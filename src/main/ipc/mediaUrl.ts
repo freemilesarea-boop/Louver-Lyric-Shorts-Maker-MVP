@@ -100,3 +100,14 @@ export function pathToMediaUrl(path: string): string {
 export function mediaUrlToFileUrl(mediaUrl: string): string {
   return mediaUrl.replace(/^media:/, 'file:');
 }
+
+/**
+ * Phase 5-8.6 — direct `file://` URL for the renderer to drop into
+ * <img>/<video>/<audio> src. This bypasses the media:// custom
+ * protocol entirely. webSecurity=false in BrowserWindow allows the
+ * renderer to load file:// URLs. The standard library handles all
+ * the path encoding (spaces, %, #, ?, Unicode) so we don't have to.
+ */
+export function pathToFileUrl(path: string): string {
+  return pathToFileURL(path).toString();
+}

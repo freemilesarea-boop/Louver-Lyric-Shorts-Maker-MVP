@@ -368,15 +368,15 @@ export default function EditorScreen(): JSX.Element {
                   : 'image';
             const src =
               kind === 'image'
-                ? await api().readAsDataURL(path).catch(() => api().toMediaUrl(path))
-                : await api().toMediaUrl(path);
+                ? await api().readAsDataURL(path).catch(() => api().toFileUrl(path))
+                : await api().toFileUrl(path);
             state.setImage(path, src, kind);
             setVideoUnsupported(false);
           }}
           onTranscoded={async (newPath) => {
             // eslint-disable-next-line no-console
             console.log('[transcode:done] mainMediaPath →', newPath);
-            const src = await api().toMediaUrl(newPath);
+            const src = await api().toFileUrl(newPath);
             state.setImage(newPath, src, 'video');
             setVideoUnsupported(false);
           }}

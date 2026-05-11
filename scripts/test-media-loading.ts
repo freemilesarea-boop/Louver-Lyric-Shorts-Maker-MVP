@@ -29,6 +29,7 @@ import {
   DataUrlRefusedError,
   DATAURL_MAX_BYTES,
   mediaUrlToFileUrl,
+  pathToFileUrl,
   pathToMediaUrl,
   readImageAsDataURL,
 } from '../src/main/ipc/mediaUrl';
@@ -145,6 +146,18 @@ async function main(): Promise<void> {
       'mediaUrlToFileUrl swaps scheme back',
       back.startsWith('file://') && back === pathToFileURL(tinyPng).toString(),
       `back=${back}`,
+    );
+
+    // === 4b. Phase 5-8.6 — direct pathToFileUrl shape ===
+    const fileUrl = pathToFileUrl(tinyPng);
+    ok(
+      'pathToFileUrl returns file:// URL',
+      fileUrl.startsWith('file://'),
+      `url=${fileUrl}`,
+    );
+    ok(
+      'pathToFileUrl matches Node pathToFileURL exactly',
+      fileUrl === pathToFileURL(tinyPng).toString(),
     );
 
     // === 5. Spaces and Unicode in paths ===

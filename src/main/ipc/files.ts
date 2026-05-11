@@ -18,7 +18,7 @@ import {
   type SaveInput,
 } from '../storage/customPresets';
 import { loadBundledFonts } from '../storage/fontFiles';
-import { pathToMediaUrl, readImageAsDataURL } from './mediaUrl';
+import { pathToFileUrl, pathToMediaUrl, readImageAsDataURL } from './mediaUrl';
 import {
   isSupportedForPreview,
   probeMedia,
@@ -312,6 +312,14 @@ export function registerFileHandlers(
   // — net.fetch streams the file directly, no base64 in JS land.
   ipcMain.handle('files:toMediaUrl', (_e, path: string) => {
     return pathToMediaUrl(path);
+  });
+
+  // Phase 5-8.6 — direct file:// URL. Used by video/audio preview now
+  // that webSecurity is false. Bypasses the media:// streaming bridge
+  // that was producing net::ERR_UNEXPECTED in the user's real run
+  // even after the Phase 5-8.5 net.fetch revert.
+  ipcMain.handle('files:toFileUrl', (_e, path: string) => {
+    return pathToFileUrl(path);
   });
 
   ipcMain.handle('files:defaultOutputDir', async () => {

@@ -13,20 +13,29 @@ function detectMediaKind(path: string): MediaKind {
 }
 
 /**
- * Resolve the renderer-side preview src for a file. Image extensions go
- * through readAsDataURL (cheap canvas painting, survives offline use);
- * gif/video go through `media://` so we never base64 huge files. If a
+ * Resolve the renderer-side preview src for a file.
+ *
+ * Phase 5-8.6 — gif/video go through `file://` directly (webSecurity
+ * is now false in BrowserWindow). The previous media:// streaming
+ * bridge produced net::ERR_UNEXPECTED in the user's Electron run
+ * even after the Phase 5-8.5 net.fetch revert, which suggested the
+ * custom-protocol layer itself was the unreliable component. file://
+ * is Chromium's first-party loader; it works for arbitrary sizes
+ * without any IPC bridge and supports Range natively.
+ *
+ * Image extensions still try readAsDataURL first (cheap canvas
+ * painting, survives offline use, decode is synchronous). If a
  * supposedly-image file blows the 10MB DataURL cap, we fall back to
- * `media://` instead of failing. Phase 5-6.1.
+ * `file://` URLs instead of failing.
  */
 async function resolveMediaSrc(path: string, kind: MediaKind): Promise<string> {
   if (kind !== 'image') {
-    return api().toMediaUrl(path);
+    return api().toFileUrl(path);
   }
   try {
     return await api().readAsDataURL(path);
   } catch {
-    return api().toMediaUrl(path);
+    return api().toFileUrl(path);
   }
 }
 
@@ -83,9 +92,10 @@ export default function StartScreen(): JSX.Element {
       const path = await api().pickAudio();
       if (!path) return;
       const meta = await api().probeAudio(path);
-      // Audio always goes through media:// — a single 50MB MP3 base64'd
-      // is ~67MB and a long WAV easily exceeds V8's string cap.
-      const src = await api().toMediaUrl(path);
+      // Phase 5-8.6 — audio goes through file:// directly. media://
+      // produced ERR_UNEXPECTED for both video and audio; bypassing
+      // the custom protocol fixes both at once.
+      const src = await api().toFileUrl(path);
       setAudio(path, src, meta.durationSec);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -170,7 +180,7 @@ export default function StartScreen(): JSX.Element {
           path={imagePath}
           kind={mainMediaKind}
           onTranscoded={async (newPath) => {
-            const src = await api().toMediaUrl(newPath);
+            const src = await api().toFileUrl(newPath);
             setImage(newPath, src, 'video');
           }}
         />

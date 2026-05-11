@@ -118,6 +118,11 @@ export interface LyricShortsAPI {
   /** Returns a `media://` URL backed by the privileged Electron protocol.
    *  Safe for arbitrary file sizes — streamed, not buffered. */
   toMediaUrl(path: string): Promise<string>;
+  /** Phase 5-8.6 — direct `file://` URL. Use this for <video> / <audio>
+   *  src; the media:// streaming bridge proved unreliable for video
+   *  decode. webSecurity=false in the BrowserWindow allows file:// to
+   *  load from the renderer. */
+  toFileUrl(path: string): Promise<string>;
   /** Phase 5-8.1 — ffprobe the file and report whether Chromium's
    *  <video> will accept it for preview. Used by the validation
    *  banner to decide between "go straight to preview" and "offer

@@ -40,6 +40,25 @@ function createWindow(): void {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      // Phase 5-8.6 — disable webSecurity so the renderer can load
+      // `file://` URLs into <img> / <video> / <audio> src directly,
+      // bypassing the custom media:// protocol entirely for media
+      // playback. The user reported that even net.fetch(file://) via
+      // protocol.handle produced net::ERR_UNEXPECTED + duration=NaN,
+      // confirming the Electron streaming bridge is the problem layer.
+      // file:// in the renderer uses Chromium's first-party file URL
+      // loader which is the same code path the production Electron
+      // load-from-file path uses for the renderer bundle itself —
+      // structurally impossible for it to be misconfigured.
+      //
+      // Threat model justification: this app only ever loads its own
+      // local renderer bundle (no remote URLs, no untrusted iframes,
+      // no user-injected HTML). The disabled cross-origin policy
+      // matters only when the page loads content from another origin,
+      // which we never do. Worst case is a malicious local image /
+      // video / audio whose file:// URL was already going to be
+      // loaded anyway via media:// — same blast radius.
+      webSecurity: false,
     },
   });
 

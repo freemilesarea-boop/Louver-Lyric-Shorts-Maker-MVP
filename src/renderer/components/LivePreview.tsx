@@ -166,8 +166,20 @@ export default function LivePreview(props: Props): JSX.Element {
         setVideoError(null);
         debugSnapshot('canplay');
       };
-      v.addEventListener('loadedmetadata', () => debugSnapshot('loadedmetadata'));
-      v.addEventListener('loadeddata', () => debugSnapshot('loadeddata'));
+      // Phase 5-8.6 — log EVERY <video> event the spec defines (per
+      // user spec). Helps root-cause future "stuck on loading"
+      // reports — the user can paste the console log and see exactly
+      // which event last fired and the readyState/networkState at
+      // that moment.
+      const trace = (tag: string) => () => debugSnapshot(tag);
+      v.addEventListener('loadstart', trace('loadstart'));
+      v.addEventListener('loadedmetadata', trace('loadedmetadata'));
+      v.addEventListener('loadeddata', trace('loadeddata'));
+      v.addEventListener('canplaythrough', trace('canplaythrough'));
+      v.addEventListener('stalled', trace('stalled'));
+      v.addEventListener('suspend', trace('suspend'));
+      v.addEventListener('abort', trace('abort'));
+      v.addEventListener('emptied', trace('emptied'));
       v.addEventListener('canplay', onCanPlay);
       v.addEventListener('error', () => {
         if (cancelled) return;
