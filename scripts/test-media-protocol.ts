@@ -179,6 +179,75 @@ async function main(): Promise<void> {
       new Request(pathToMediaUrl(join(work, 'does-not-exist.mp4'))),
     );
     ok('missing file → 404', respMissing.status === 404);
+
+    // === Phase 5-8.4 — nested temp-style paths (mimics macOS
+    //     /var/folders/.../T/lyric-shorts-transcode-xxx/converted.mp4
+    //     which is where transcodeMainMedia writes). Verifies the
+    //     buffered handler serves them as cleanly as a flat path. ===
+    const deep = join(work, 'a', 'b', 'lyric-shorts-transcode-XYZ');
+    await fs.mkdir(deep, { recursive: true });
+    const nested = join(deep, 'converted-main-media.mp4');
+    await fs.writeFile(nested, buf);
+    const respNested = await handleMediaRequest(
+      new Request(pathToMediaUrl(nested), { headers: { Range: 'bytes=0-99' } }),
+    );
+    ok('nested temp path → 206 status', respNested.status === 206);
+    const bodyNested = Buffer.from(await respNested.arrayBuffer());
+    ok(
+      'nested temp path → body length 100',
+      bodyNested.length === 100,
+      `len=${bodyNested.length}`,
+    );
+    ok(
+      'nested temp path → Content-Length matches body',
+      respNested.headers.get('Content-Length') === '100',
+    );
+    ok(
+      'nested temp path → Content-Type video/mp4',
+      respNested.headers.get('Content-Type') === 'video/mp4',
+    );
+
+    // === Phase 5-8.4 — audio mime types (wav/mp3/m4a). Same buffered
+    //     handler serves them; pin the Content-Type so audio preview
+    //     element gets the right MIME and seeks properly. ===
+    const wavPath = join(work, 'glitch.wav');
+    await fs.writeFile(wavPath, buf);
+    const respWav = await handleMediaRequest(new Request(pathToMediaUrl(wavPath)));
+    ok(
+      'wav → audio/wav mime',
+      respWav.headers.get('Content-Type') === 'audio/wav',
+    );
+    ok('wav → 200 + Accept-Ranges', respWav.status === 200 && respWav.headers.get('Accept-Ranges') === 'bytes');
+    const wavBody = Buffer.from(await respWav.arrayBuffer());
+    ok('wav → full body bytes', wavBody.length === buf.length && wavBody.equals(buf));
+
+    const mp3Path = join(work, 'song.mp3');
+    await fs.writeFile(mp3Path, buf);
+    const respMp3 = await handleMediaRequest(
+      new Request(pathToMediaUrl(mp3Path), { headers: { Range: 'bytes=500-999' } }),
+    );
+    ok('mp3 → audio/mpeg mime', respMp3.headers.get('Content-Type') === 'audio/mpeg');
+    const mp3Body = Buffer.from(await respMp3.arrayBuffer());
+    ok(
+      'mp3 ranged → 500 bytes match source slice',
+      mp3Body.length === 500 && mp3Body.equals(buf.slice(500, 1000)),
+    );
+
+    // === Phase 5-8.4 — Content-Length and body byte count agree. The
+    //     bug we are fixing made these disagree (Readable.toWeb
+    //     cancellation truncated body without updating Content-Length)
+    //     which Chromium reports as net::ERR_UNEXPECTED. ===
+    const respSized = await handleMediaRequest(
+      new Request(pathToMediaUrl(nested), { headers: { Range: 'bytes=200-749' } }),
+    );
+    const sized = Buffer.from(await respSized.arrayBuffer());
+    const expectedLen = 749 - 200 + 1; // 550 bytes (inclusive range)
+    ok(
+      'Content-Length matches body length exactly (200-749 → 550 bytes)',
+      sized.length === expectedLen &&
+        respSized.headers.get('Content-Length') === String(expectedLen),
+      `body=${sized.length} header=${respSized.headers.get('Content-Length')}`,
+    );
   } finally {
     await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   }

@@ -201,6 +201,16 @@ async function main(): Promise<void> {
     ok('transcode argv ends in destPath', args[args.length - 1] === transcoded);
     ok('transcode argv drops audio (-an)', args.includes('-an'));
     ok('transcode argv forces yuv420p', args.includes('-pix_fmt') && args.includes('yuv420p'));
+    // Phase 5-8.4 — pin the conservative args.
+    ok('transcode argv has -map 0:v:0', args.includes('-map') && args.includes('0:v:0'));
+    ok('transcode argv has baseline profile', args.includes('-profile:v') && args.includes('baseline'));
+    ok('transcode argv has level 4.0', args.includes('-level') && args.includes('4.0'));
+    ok('transcode argv has +faststart', args.includes('-movflags') && args.includes('+faststart'));
+    const vfIdx = args.indexOf('-vf');
+    const vf = vfIdx >= 0 ? args[vfIdx + 1] : '';
+    ok('transcode -vf pads to 1080x1920', /pad=1080:1920/.test(vf));
+    ok('transcode -vf sets sar=1', /setsar=1/.test(vf));
+    ok('transcode -vf force_original_aspect_ratio=decrease (no crop)', /force_original_aspect_ratio=decrease/.test(vf));
 
     const tr = await run(FFMPEG, args);
     ok('ffmpeg accepts transcode argv', tr.code === 0, `code=${tr.code}`);
@@ -216,12 +226,43 @@ async function main(): Promise<void> {
       `pix=${transProbe.pixelFormat}`,
     );
     ok(
+      'transcoded file → 1080x1920 canvas',
+      transProbe.width === 1080 && transProbe.height === 1920,
+      `${transProbe.width}x${transProbe.height}`,
+    );
+    ok(
       'transcoded file → no audio',
       !transProbe.hasAudio,
     );
     ok(
       'transcoded file → supported for preview',
       isSupportedForPreview(transProbe).supported,
+    );
+
+    // === Phase 5-8.4 — frame-extraction smoke. Same gate the production
+    //     transcodeMainMedia IPC uses. A file can probe-pass but still
+    //     have a corrupt first I-frame; this catches that. ===
+    const frameTest = await run(FFMPEG, [
+      '-hide_banner', '-loglevel', 'error',
+      '-y', '-ss', '0', '-i', transcoded,
+      '-frames:v', '1', '-f', 'null', '-',
+    ]);
+    ok(
+      'transcoded file → first frame decodes cleanly',
+      frameTest.code === 0,
+      `code=${frameTest.code}`,
+    );
+
+    // Output is a non-trivial size (encoder didn't bail). 10 KB is
+    // the floor for any meaningful libx264 output even at the 1-second
+    // fixture length used here; the production gate in
+    // transcodeMainMedia is stricter (100 KB) because real user files
+    // are seconds-to-minutes long.
+    const transStat = await fs.stat(transcoded);
+    ok(
+      'transcoded file > 10 KB (encoder did not bail on 1s fixture)',
+      transStat.size > 10 * 1024,
+      `size=${transStat.size}`,
     );
 
     // === 4b. Banner convert-button visibility — Phase 5-8.2 regression pin ===

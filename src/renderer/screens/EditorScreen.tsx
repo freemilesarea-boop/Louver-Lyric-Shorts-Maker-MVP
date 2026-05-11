@@ -47,6 +47,10 @@ export default function EditorScreen(): JSX.Element {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  /** Phase 5-8.4 — surfaces .play() rejection (browser autoplay
+   *  policy, audio element src failed to load, etc.) so the user
+   *  doesn't tap the button repeatedly assuming nothing happened. */
+  const [previewError, setPreviewError] = useState<string | null>(null);
   /** Phase 5-8.1 — set when LivePreview's <video> errors or its 5s
    *  canplay watchdog trips. Forces the MediaValidationBanner to show
    *  even if the file was an extension we'd have skipped probing. */
@@ -103,11 +107,27 @@ export default function EditorScreen(): JSX.Element {
   // (more accurate than a setTimeout, which drifts when the browser
   // throttles the tab). Re-clicking while playing pauses immediately.
   const onPreviewPlay = () => {
+    setPreviewError(null);
     const a = audioRef.current;
-    if (!a) return;
+    if (!a) {
+      setPreviewError('오디오 엘리먼트가 아직 준비되지 않았어요. 잠시 후 다시 시도해주세요.');
+      return;
+    }
     if (isPreviewPlaying) {
       a.pause();
       setIsPreviewPlaying(false);
+      return;
+    }
+    // Phase 5-8.4 — defend against the audio element's src having
+    // failed to load (e.g. media:// protocol rejection). Without this
+    // probe the user sees nothing happen and assumes the button is
+    // broken. `error` is set whenever the element has hit an HTMLMedia
+    // error code; we report it before even attempting play().
+    if (a.error) {
+      setPreviewError(
+        `오디오 로딩에 실패해서 미리듣기를 시작할 수 없어요 ` +
+          `(code=${a.error.code}). 다른 오디오 파일을 선택해주세요.`,
+      );
       return;
     }
     const endSec = state.startSec + state.durationSec;
@@ -128,10 +148,25 @@ export default function EditorScreen(): JSX.Element {
     a.addEventListener('timeupdate', onTime);
     a.addEventListener('pause', onPause);
     a.play()
-      .then(() => setIsPreviewPlaying(true))
-      .catch(() => {
+      .then(() => {
+        setIsPreviewPlaying(true);
+        // eslint-disable-next-line no-console
+        console.log(
+          '[audio:preview] play OK',
+          'src=', a.currentSrc?.slice(0, 80),
+          'currentTime=', a.currentTime,
+          'duration=', a.duration,
+        );
+      })
+      .catch((e: Error) => {
         a.removeEventListener('timeupdate', onTime);
         a.removeEventListener('pause', onPause);
+        // eslint-disable-next-line no-console
+        console.error('[audio:preview] play() rejected:', e);
+        setPreviewError(
+          `재생을 시작하지 못했어요: ${e.message || String(e)}. ` +
+            `오디오 파일이 손상되었거나 코덱이 지원되지 않을 수 있어요.`,
+        );
       });
   };
 
@@ -405,6 +440,7 @@ export default function EditorScreen(): JSX.Element {
               audioRef={audioRef}
               onPreviewPlay={onPreviewPlay}
               isPreviewPlaying={isPreviewPlaying}
+              previewError={previewError}
             />
             <HookSuggester />
           </div>

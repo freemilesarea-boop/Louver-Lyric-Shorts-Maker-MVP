@@ -95,21 +95,48 @@ export function isSupportedForPreview(probe: MediaProbe): SupportVerdict {
 
 /**
  * Build the ffmpeg argv that transcodes an arbitrary input into a
- * preview-friendly MP4. We:
- *   - downscale only when the long edge exceeds 1920px (matches the
- *     export pipeline's target). Smaller files pass through unchanged.
- *   - force yuv420p so 10-bit / non-standard pixel formats become
- *     Chromium-decodable.
- *   - libx264 fast/crf 20 — visually equivalent to the export
- *     pipeline's medium-quality preset, completes in seconds.
- *   - drop the audio track (`-an`) since the user's own audio file is
- *     the only audio source the render uses. Avoids carrying along
- *     HEVC's HE-AAC, EAC3, ProRes PCM, etc that Chromium audio could
- *     also refuse.
+ * preview-friendly MP4. Phase 5-8.4 made this much more conservative
+ * after the user reported that even ostensibly-supported h264/yuv420p
+ * sources still failed Chromium decode after our previous transcode:
  *
- * The `scale=` expression preserves aspect ratio — no crop, no
- * letterbox. The preview / export pipeline handles cover-cropping at
- * paint time.
+ *   - `-map 0:v:0`              pick exactly one video stream (no
+ *                               leftover audio / subtitle / metadata
+ *                               streams that some Chromium builds choke
+ *                               on)
+ *   - `scale=... pad=1080:1920` normalize to 1080×1920 with aspect
+ *                               preserved (no crop). Anything taller or
+ *                               wider gets letterboxed to fit; smaller
+ *                               sources are upscaled to fill. Result:
+ *                               the output is ALWAYS the exact
+ *                               dimensions Chromium has the easiest
+ *                               time decoding for our app's 9:16 canvas.
+ *   - `setsar=1`                fixed sample aspect ratio. Phone cameras
+ *                               sometimes ship SAR ≠ 1 which decoder
+ *                               backends interpret inconsistently.
+ *   - `format=yuv420p`          force 8-bit yuv420p inside the filter
+ *                               graph so 10-bit / yuv422p10le / yuv444p
+ *                               sources can't sneak through.
+ *   - `-c:v libx264`            software encoder bundled with
+ *                               ffmpeg-static; always available.
+ *   - `-profile:v baseline`     widest decoder support. No CABAC, no
+ *                               B-frames; pre-2020 phones can decode it
+ *                               and Chromium baseline support is
+ *                               bulletproof.
+ *   - `-level 4.0`              max 1920×1080 @ 30fps — but for 9:16
+ *                               portrait the macroblock count (1080×
+ *                               1920 = 8160 MB) sits right at the L4.0
+ *                               cap so this is still the right level.
+ *   - `-preset fast -crf 22`    good visual / encode-time tradeoff for
+ *                               a single transcode-then-preview pass.
+ *   - `-movflags +faststart`    moves the moov atom to the front so
+ *                               Chromium can begin decoding before the
+ *                               whole file has been fetched. The
+ *                               single biggest fix for "h264 file but
+ *                               still won't play" symptoms.
+ *   - `-an`                     drop audio. The user picks their own
+ *                               audio file; we never want the source's
+ *                               audio along for the ride (HE-AAC, EAC3,
+ *                               etc.).
  */
 export function recommendedTranscodeArgs(
   srcPath: string,
@@ -119,14 +146,23 @@ export function recommendedTranscodeArgs(
     '-y',
     '-i',
     srcPath,
+    '-map',
+    '0:v:0',
     '-vf',
-    "scale='if(gt(iw,ih),min(1920,iw),-2)':'if(gt(iw,ih),-2,min(1920,ih))',format=yuv420p",
+    'scale=w=1080:h=1920:force_original_aspect_ratio=decrease,' +
+      'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,' +
+      'setsar=1,' +
+      'format=yuv420p',
     '-c:v',
     'libx264',
+    '-profile:v',
+    'baseline',
+    '-level',
+    '4.0',
     '-preset',
     'fast',
     '-crf',
-    '20',
+    '22',
     '-pix_fmt',
     'yuv420p',
     '-movflags',

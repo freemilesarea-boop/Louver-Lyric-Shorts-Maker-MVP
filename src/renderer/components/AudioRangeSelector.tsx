@@ -14,6 +14,11 @@ interface Props {
   /** Phase 5-7 — when true the button shows a stop-style affordance so
    *  the user can tell at a glance that the section is actively playing. */
   isPreviewPlaying?: boolean;
+  /** Phase 5-8.4 — non-null when the parent's onPreviewPlay caught a
+   *  rejection from HTMLAudioElement.play() (audio src didn't load,
+   *  autoplay blocked, codec mismatch, etc.). Rendered as a red
+   *  banner under the preview button. */
+  previewError?: string | null;
 }
 
 /**
@@ -97,6 +102,11 @@ export default function AudioRangeSelector(props: Props): JSX.Element {
                 {fmt(props.startSec)} ~ {fmt(endSec)}
               </span>
             </button>
+            {props.previewError && (
+              <div className="mt-1.5 rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] leading-snug text-red-200">
+                {props.previewError}
+              </div>
+            )}
           </div>
 
           {/* Quick length buttons. */}

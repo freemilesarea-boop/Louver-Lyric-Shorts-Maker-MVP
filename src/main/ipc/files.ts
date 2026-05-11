@@ -123,11 +123,32 @@ export function registerFileHandlers(
       const args = recommendedTranscodeArgs(srcPath, outputPath);
       try {
         await runFfmpegTranscode(args, getWin);
-        // Phase 5-8.2 — verify the OUTPUT actually probes as
-        // preview-friendly before reporting success. This catches the
-        // pathological case where ffmpeg returns 0 but the produced
-        // file has zero video streams (corrupted source) or somehow
-        // ends up with an unsupported codec/pixfmt anyway.
+
+        // Phase 5-8.2/8.4 — 3-step output verification. The user saw
+        // [transcode:done] but the file still failed Chromium decode
+        // with ERR_UNEXPECTED, so "ffmpeg returned 0" is not enough.
+        //
+        //   (a) file exists + size > 100 KB
+        //       libx264 with our scale+pad produces ~50 KB/s minimum
+        //       even for trivial sources; anything smaller means the
+        //       encoder bailed early.
+        //   (b) ffprobe shows h264 / yuv420p / w*h > 0 / duration > 0
+        //   (c) frame-extraction smoke: ffmpeg -ss 0 -frames:v 1 -f null
+        //       proves the file is actually decodable, not just
+        //       parseable. Some failure modes produce a structurally
+        //       valid MP4 whose first I-frame is corrupt.
+        let stat;
+        try {
+          stat = await fs.stat(outputPath);
+        } catch {
+          return { ok: false, error: '변환된 파일이 디스크에 없습니다.' };
+        }
+        if (stat.size < 100 * 1024) {
+          return {
+            ok: false,
+            error: `변환된 파일이 너무 작아요 (${stat.size} bytes). 인코더가 도중에 멈췄을 가능성이 큽니다.`,
+          };
+        }
         const probe = await probeMedia(outputPath, ffprobePath);
         const verdict = isSupportedForPreview(probe);
         if (!verdict.supported) {
@@ -137,6 +158,13 @@ export function registerFileHandlers(
               `변환된 파일이 여전히 미리보기에서 지원되지 않아요 ` +
               `(${probe.videoCodec ?? 'no-video'} · ${probe.pixelFormat ?? 'no-pixfmt'}). ` +
               `원본 파일이 손상되었을 수 있어요. 자세한 사유: ${verdict.reason}`,
+          };
+        }
+        const frameOk = await canDecodeFirstFrame(outputPath);
+        if (!frameOk) {
+          return {
+            ok: false,
+            error: '변환된 파일에서 첫 프레임을 디코드할 수 없었어요. 원본이 손상되었을 가능성이 있어요.',
           };
         }
         return { ok: true, outputPath };
@@ -297,6 +325,30 @@ async function runFfmpegTranscode(
 
 function probeSourceDurationSec(path: string): Promise<number> {
   return probeDuration(path).then((m) => m.durationSec).catch(() => 0);
+}
+
+/**
+ * Phase 5-8.4 — frame-extraction smoke. Returns true when ffmpeg can
+ * decode at least the first video frame of `path`. Used as a final
+ * gate before transcodeMainMedia reports success: a probe-passing
+ * file whose first I-frame is corrupt would still hand Chromium the
+ * same MEDIA_ELEMENT_ERROR the user already saw.
+ *
+ *   ffmpeg -hide_banner -loglevel error -y -ss 0 -i path -frames:v 1 -f null -
+ *
+ * Exit 0 = at least one frame decoded; non-zero = decoder error.
+ * We never write the frame to disk — the null muxer discards it.
+ */
+function canDecodeFirstFrame(path: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn(ffmpegPath, [
+      '-hide_banner', '-loglevel', 'error',
+      '-y', '-ss', '0', '-i', path,
+      '-frames:v', '1', '-f', 'null', '-',
+    ]);
+    child.on('error', () => resolve(false));
+    child.on('close', (code) => resolve(code === 0));
+  });
 }
 
 function probeDuration(path: string): Promise<AudioMeta> {
