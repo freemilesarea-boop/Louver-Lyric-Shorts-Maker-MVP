@@ -19,6 +19,10 @@ interface Props {
   /** Called after a successful transcode. Parent should setImage() with
    *  the new path so the store + preview re-resolve. */
   onTranscoded: (newPath: string) => void;
+  /** Phase 5-8.3 — optional secondary action. When the user would
+   *  rather pick a fresh source instead of waiting for a transcode
+   *  ("다른 영상 선택"). Parent owns the file picker IPC. */
+  onPickAgain?: () => void | Promise<void>;
 }
 
 /**
@@ -84,18 +88,33 @@ export default function MediaValidationBanner(props: Props): JSX.Element | null 
 
   const onConvert = async () => {
     if (!props.path) return;
+    // eslint-disable-next-line no-console
+    console.log(
+      '[transcode:start]',
+      'input=',
+      props.path,
+      'probe=',
+      reply?.probe,
+    );
     setTranscoding(true);
     setTranscodePct(0);
     setError(null);
     try {
       const result = await api().transcodeMainMedia(props.path);
       if (!result.ok) {
+        // eslint-disable-next-line no-console
+        console.error('[transcode:failed]', result.error);
         setError(`변환 실패: ${result.error}`);
         return;
       }
+      // eslint-disable-next-line no-console
+      console.log('[transcode:done]', 'output=', result.outputPath);
       props.onTranscoded(result.outputPath);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      // eslint-disable-next-line no-console
+      console.error('[transcode:failed]', msg);
+      setError(msg);
     } finally {
       setTranscoding(false);
     }
@@ -191,28 +210,43 @@ export default function MediaValidationBanner(props: Props): JSX.Element | null 
             </div>
           )}
           {needsConvert && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="mt-3 space-y-2">
+              {/* Primary CTA — big full-width button so it's
+                *  impossible to miss even in a narrow column. */}
               <button
                 onClick={onConvert}
                 disabled={transcoding}
                 className={[
-                  'rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                  'flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition-colors',
                   transcoding
-                    ? 'bg-yellow-500/30 cursor-wait'
+                    ? 'bg-yellow-500/30 text-yellow-200 cursor-wait'
                     : 'bg-yellow-400 text-ink-950 hover:bg-yellow-300',
                 ].join(' ')}
               >
-                {transcoding
-                  ? `변환 중... ${transcodePct.toFixed(0)}%`
-                  : '▶ 권장 형식으로 변환하기'}
+                <span className="font-mono text-base leading-none">▶</span>
+                <span>
+                  {transcoding
+                    ? `영상 변환 중... ${transcodePct.toFixed(0)}%`
+                    : '권장 형식으로 변환하기'}
+                </span>
               </button>
               {transcoding && (
-                <div className="h-1.5 flex-1 overflow-hidden rounded bg-yellow-500/20">
+                <div className="h-1.5 overflow-hidden rounded bg-yellow-500/20">
                   <div
                     className="h-full bg-yellow-300 transition-all"
                     style={{ width: `${transcodePct}%` }}
                   />
                 </div>
+              )}
+              {/* Secondary action — re-pick a different file. Always
+                *  rendered alongside Convert so the user has an out. */}
+              {props.onPickAgain && !transcoding && (
+                <button
+                  onClick={() => props.onPickAgain?.()}
+                  className="w-full rounded-md border border-yellow-500/30 px-3 py-1.5 text-[11px] text-yellow-200/80 hover:bg-yellow-500/10"
+                >
+                  다른 영상 선택
+                </button>
               )}
             </div>
           )}

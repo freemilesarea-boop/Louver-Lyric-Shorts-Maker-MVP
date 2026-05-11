@@ -276,22 +276,6 @@ export default function EditorScreen(): JSX.Element {
             onLayoutChange={state.setLayoutOverride}
             onVideoUnsupported={() => setVideoUnsupported(true)}
           />
-          {/* Phase 5-8.1 — codec banner. Hidden until the inner <video>
-            *  errors or the watchdog flags an unsupported source. On
-            *  transcode success we swap the store's main media so the
-            *  preview re-resolves with the new file. */}
-          <div className="w-full max-w-md">
-            <MediaValidationBanner
-              path={state.imagePath}
-              kind={state.mainMediaKind}
-              forceShow={videoUnsupported}
-              onTranscoded={async (newPath) => {
-                const src = await api().toMediaUrl(newPath);
-                state.setImage(newPath, src, 'video');
-                setVideoUnsupported(false);
-              }}
-            />
-          </div>
         </div>
         <div className="mt-2 w-full">
           <SafeZoneToggle />
@@ -323,6 +307,46 @@ export default function EditorScreen(): JSX.Element {
 
       {/* Right column: controls */}
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1">
+        {/* Phase 5-8.3 — codec banner pinned to the TOP of the right
+          *  control column so it always has the full 500px width to
+          *  render. Previous placement (sibling of LivePreview canvas
+          *  inside a flex row) squeezed the card into ~150px and the
+          *  convert button wrapped off-screen. Renders only when there's
+          *  a probe-rejection OR a runtime decode failure — otherwise
+          *  the slot is empty. */}
+        <MediaValidationBanner
+          path={state.imagePath}
+          kind={state.mainMediaKind}
+          forceShow={videoUnsupported}
+          onPickAgain={async () => {
+            // "다른 영상 선택" — re-open the file picker. We reuse the
+            // StartScreen flow's IPC directly here so the user doesn't
+            // have to navigate back.
+            const path = await api().pickImage();
+            if (!path) return;
+            const ext = path.toLowerCase().split('.').pop() ?? '';
+            const kind =
+              ext === 'gif'
+                ? 'gif'
+                : ['mp4', 'mov', 'm4v', 'webm'].includes(ext)
+                  ? 'video'
+                  : 'image';
+            const src =
+              kind === 'image'
+                ? await api().readAsDataURL(path).catch(() => api().toMediaUrl(path))
+                : await api().toMediaUrl(path);
+            state.setImage(path, src, kind);
+            setVideoUnsupported(false);
+          }}
+          onTranscoded={async (newPath) => {
+            // eslint-disable-next-line no-console
+            console.log('[transcode:done] mainMediaPath →', newPath);
+            const src = await api().toMediaUrl(newPath);
+            state.setImage(newPath, src, 'video');
+            setVideoUnsupported(false);
+          }}
+        />
+
         <Section title="추천 스타일">
           <SamplePresetPicker />
         </Section>

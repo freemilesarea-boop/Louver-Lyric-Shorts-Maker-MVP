@@ -422,22 +422,25 @@ export default function LivePreview(props: Props): JSX.Element {
         className="max-h-full max-w-full rounded-2xl shadow-2xl"
         style={{ aspectRatio: '9 / 16', height: '100%', objectFit: 'contain' }}
       />
-      {/* Phase 5-7/8 — concrete state surface for video kind. The
-       *  canvas would otherwise paint just the background card and the
-       *  user would think they picked a blank file. We now also pop a
-       *  red banner if the 10s watchdog fires or the element emits a
-       *  hard `error` event. */}
+      {/* Phase 5-8.3 — short pill overlay only. The detailed
+       *  explanation + convert button live in MediaValidationBanner
+       *  in the right control column where the layout has 500px to
+       *  work with. Cramming the long copy into a narrow preview
+       *  column made the button effectively unreachable on small
+       *  windows. */}
       {props.mainMediaKind === 'video' && props.imageDataUrl && (videoError || !photo) && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-xs">
+        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 text-xs">
           <div
             className={[
-              'max-w-xs rounded-md px-3 py-2 text-center',
+              'whitespace-nowrap rounded-full px-3 py-1 shadow-lg',
               videoError
-                ? 'bg-red-500/85 text-white shadow-lg'
-                : 'bg-ink-950/70 text-white/70',
+                ? 'bg-red-500/90 text-white'
+                : 'bg-ink-950/80 text-white/70',
             ].join(' ')}
           >
-            {videoError ?? '영상 로딩 중...'}
+            {videoError
+              ? '영상 미리보기 실패 — 오른쪽 안내에서 변환하세요'
+              : '영상 로딩 중...'}
           </div>
         </div>
       )}

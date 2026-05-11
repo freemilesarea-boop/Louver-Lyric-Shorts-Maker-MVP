@@ -250,6 +250,39 @@ async function main(): Promise<void> {
       !shouldShowConvert({ probeSupported: null, forceShow: false }),
     );
 
+    // Phase 5-8.3 pin — the EXACT user case: h264 + yuv420p + 1920x3414.
+    // Probe says supported, Chromium runtime says no. The helper MUST
+    // return true so the convert button renders. Independent of layout.
+    const userCaseProbe = parseProbe(
+      JSON.stringify({
+        format: { format_name: 'mov,mp4,m4a,3gp,3g2,mj2', duration: '68.0' },
+        streams: [
+          {
+            codec_type: 'video',
+            codec_name: 'h264',
+            pix_fmt: 'yuv420p',
+            width: 1920,
+            height: 3414,
+            r_frame_rate: '30/1',
+          },
+        ],
+      }),
+    );
+    const userCaseVerdict = isSupportedForPreview(userCaseProbe);
+    ok(
+      'user case (h264+yuv420p+1920x3414) → probe says SUPPORTED',
+      userCaseVerdict.supported,
+      'ffprobe sees nothing wrong; Chromium will still fail',
+    );
+    ok(
+      'user case + Chromium-said-no → shouldShowConvert returns true',
+      shouldShowConvert({
+        probeSupported: userCaseVerdict.supported,
+        forceShow: true,
+      }),
+      'This is the regression we are fixing — banner MUST offer convert.',
+    );
+
     // === 5. URL encoding handling (spaced + Korean + special chars) ===
     // Phase 5-8.1 user spec: "URL에 #, %, ?, 한글, 공백 포함된 파일
     // 테스트". We verify pathToMediaUrl + mediaUrlToFileUrl round-trip
