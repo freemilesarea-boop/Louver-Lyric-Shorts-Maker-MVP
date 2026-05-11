@@ -97,24 +97,34 @@ jobs:
         run: npm run test:rc-qa
 
       - name: Fetch bundled whisper
-        # Phase 5-7/8 — pulls whisper.cpp's whisper-cli binary + ggml-base
-        # into resources/whisper/ so the dist installer ships AI lyric
-        # extraction with zero install on the user's machine. The script
-        # is idempotent; on Windows it grabs the upstream prebuilt zip,
-        # on macOS / Linux it builds from source statically (~3 min on a
-        # CI runner; -DBUILD_SHARED_LIBS=OFF produces a standalone binary
-        # that doesn't need sidecar .so/.dylib files).
+        # Phase 5-7/8/8.1 — pulls whisper.cpp's whisper-cli binary +
+        # ggml-base into resources/whisper/ so the dist installer ships
+        # AI lyric extraction with zero install on the user's machine.
+        # The script is idempotent; on Windows it grabs the upstream
+        # prebuilt zip, on macOS/Linux it builds statically from source
+        # (~3 min on a CI runner; -DBUILD_SHARED_LIBS=OFF produces a
+        # standalone binary that doesn't need sidecar .so/.dylib files).
         #
-        # No longer best-effort — Phase 5-8 user spec requires actual AI
-        # lyric extraction in shipped installers. A failed fetch fails
-        # the build so we never publish a "no AI engine" dist.
+        # Phase 5-8.1 policy split:
+        #   * Tag pushes (v*) MUST ship whisper — a failed fetch fails
+        #     the build so we never publish a "no AI engine" release.
+        #   * PR + main pushes treat the fetch as best-effort. A
+        #     transient HF outage or whisper.cpp release page hiccup
+        #     shouldn't block validation of the rest of the app.
+        # The `Confirm` step downstream uses the same gating so it
+        # only hard-fails on tag builds. The user explicitly authorized
+        # this split: "PR smoke CI에서는 whisper fetch를 best-effort로
+        # 유지하되 release build에서는 필수."
+        id: fetch_whisper
         shell: bash
+        continue-on-error: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: scripts/fetch-whisper.sh
 
       - name: Confirm bundled whisper landed in tree
-        # Belt-and-suspenders: fail fast if the script silently produced
-        # nothing (e.g. cmake error swallowed). Both the binary and the
-        # model must be on disk before electron-builder packages them.
+        # Required on tag pushes (release), best-effort on PR/main. We
+        # always log the outcome so the artifact's whisper status is
+        # discoverable from the run summary.
+        if: ${{ startsWith(github.ref, 'refs/tags/') || steps.fetch_whisper.outcome == 'success' }}
         shell: bash
         run: |
           set -e
@@ -125,11 +135,35 @@ jobs:
               bin=whisper-cli ;;
             Windows) plat=win32-x64; bin=whisper-cli.exe ;;
           esac
-          test -f "resources/whisper/bin/$plat/$bin" \
-            || { echo "MISSING: resources/whisper/bin/$plat/$bin"; exit 1; }
-          test -f "resources/whisper/models/ggml-base.bin" \
-            || { echo "MISSING: resources/whisper/models/ggml-base.bin"; exit 1; }
-          echo "fetch-whisper produced expected artifacts for $plat"
+          missing=""
+          [ -f "resources/whisper/bin/$plat/$bin" ] \
+            || missing="$missing resources/whisper/bin/$plat/$bin"
+          [ -f "resources/whisper/models/ggml-base.bin" ] \
+            || missing="$missing resources/whisper/models/ggml-base.bin"
+          if [ -n "$missing" ]; then
+            echo "whisper-status: missing$missing"
+            if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
+              echo "whisper-status: tag build requires bundled whisper — failing."
+              exit 1
+            else
+              echo "whisper-status: PR/main build — continuing without bundled whisper."
+              echo "  (TranscribeButton will surface the friendly fallback.)"
+            fi
+          else
+            echo "whisper-status: included for $plat (binary + ggml-base.bin)"
+          fi
+
+      - name: Report whisper inclusion in run summary
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ steps.fetch_whisper.outcome }}" = "success" ]; then
+            echo "::notice title=Whisper::included (fetch-whisper succeeded on ${{ runner.os }})"
+          elif [ "${{ steps.fetch_whisper.outcome }}" = "failure" ]; then
+            echo "::warning title=Whisper::skipped on ${{ runner.os }} (fetch failed; non-tag build continues)"
+          else
+            echo "::notice title=Whisper::status=${{ steps.fetch_whisper.outcome }} on ${{ runner.os }}"
+          fi
 
       - name: Build dist installer
         run: npm run ${{ matrix.dist-script }}

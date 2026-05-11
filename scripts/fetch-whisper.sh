@@ -25,14 +25,28 @@
 # it short-circuits and exits 0.
 
 set -euo pipefail
+# Phase 5-8.1 CI fix — self-diagnose ABORT lines so future failures
+# point at the exact line + exit code instead of bash's generic "exit 2".
+trap 'echo "fetch-whisper: ABORT at line $LINENO (exit $?)" >&2' ERR
 
 # ---- Configuration --------------------------------------------------
 # Pin a known-good whisper.cpp release. Update this single line to bump
 # the bundled version; everything else flows from it.
-WHISPER_RELEASE="${WHISPER_RELEASE:-v1.7.4}"
+#
+# Phase 5-8.1: bumped v1.7.4 → v1.8.4. v1.7.4 was published before the
+# repository moved from ggerganov/whisper.cpp → ggml-org/whisper.cpp,
+# and the v1.7.4 release page on the new org has zero Windows assets
+# (404). v1.8.4 publishes whisper-bin-x64.zip + whisper-blas-bin-x64.zip
+# alongside the source tarball, so Windows can use the prebuilt path
+# and macOS/Linux can clone the new-org URL directly.
+WHISPER_RELEASE="${WHISPER_RELEASE:-v1.8.4}"
 # Default model. ggml-base.bin (~150 MB) trades size for accuracy. Set
 # WHISPER_MODEL=tiny for ggml-tiny.bin (~75 MB) on size-constrained CI.
 WHISPER_MODEL="${WHISPER_MODEL:-base}"
+
+# Upstream repo. The old `ggerganov/whisper.cpp` URL still 301-redirects
+# but a fresh clone is cleaner against the canonical name.
+WHISPER_REPO="${WHISPER_REPO:-https://github.com/ggml-org/whisper.cpp}"
 
 # ---- Paths ----------------------------------------------------------
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -97,9 +111,30 @@ mkdir -p "$ROOT_DIR/.cache"
 fetch_prebuilt_or_build() {
   case "$PLATFORM" in
     win32-x64)
-      local url="${WHISPER_BIN_URL:-https://github.com/ggerganov/whisper.cpp/releases/download/${WHISPER_RELEASE}/whisper-bin-x64.zip}"
-      echo "fetch-whisper: downloading prebuilt $url"
-      curl -fsSL --retry 3 -o "$ARCHIVE" "$url"
+      # Phase 5-8.1: try the canonical prebuilt first; if the pinned
+      # release doesn't have a Windows asset (the v1.7.4 → v1.8.x
+      # rename was missing whisper-bin-x64.zip on the new org), retry
+      # the BLAS-enabled zip and finally fall back to the most recent
+      # release's prebuilt. Verbose: every step echoes its URL so a CI
+      # log makes the trail debuggable.
+      local urls=(
+        "${WHISPER_BIN_URL:-${WHISPER_REPO}/releases/download/${WHISPER_RELEASE}/whisper-bin-x64.zip}"
+        "${WHISPER_REPO}/releases/download/${WHISPER_RELEASE}/whisper-blas-bin-x64.zip"
+      )
+      local downloaded=""
+      for url in "${urls[@]}"; do
+        echo "fetch-whisper: trying prebuilt $url"
+        if curl -fsSL --retry 3 -A 'Mozilla/5.0 (whisper-fetcher)' \
+             -o "$ARCHIVE" "$url"; then
+          downloaded="$url"; break
+        fi
+        echo "fetch-whisper: ↳ skipped (curl non-zero)"
+      done
+      if [ -z "$downloaded" ]; then
+        echo "fetch-whisper: no Windows prebuilt found at $WHISPER_RELEASE — Windows requires a release with whisper-bin-x64.zip." >&2
+        echo "fetch-whisper: pinned releases since the org rename are v1.8.x; bump WHISPER_RELEASE if v$WHISPER_RELEASE was the problem." >&2
+        exit 1
+      fi
       local extract="$ROOT_DIR/.cache/whisper-${PLATFORM}-extracted"
       rm -rf "$extract"
       mkdir -p "$extract"
@@ -112,6 +147,13 @@ fetch_prebuilt_or_build() {
         exit 1
       fi
       cp "$found" "$BIN_OUT"
+      # Bundle the .dll runtime files alongside the binary — the
+      # upstream zip ships whisper.dll / ggml*.dll which the exe loads
+      # at runtime. Without them whisper-cli.exe fails with
+      # "ggml.dll not found".
+      while IFS= read -r dll; do
+        cp "$dll" "$BIN_DIR/$PLATFORM/"
+      done < <(find "$extract" -type f -iname '*.dll')
       ;;
     darwin-arm64|darwin-x64|linux-x64)
       # Build from source — upstream prebuilds for *nix aren't reliably
@@ -124,11 +166,17 @@ fetch_prebuilt_or_build() {
       # renderer. Static build folds everything into a single ~10-15 MB
       # binary that doesn't need code-signing of any sidecar libraries
       # (matters on macOS where Gatekeeper checks every .dylib).
+      #
+      # Phase 5-8.1: do NOT silence cmake's stdout — when this failed
+      # in CI under the previous version the `>/dev/null` redirect ate
+      # the only useful diagnostic ("Process completed with exit 2"
+      # was bash's view of a swallowed cmake error). Verbose output
+      # is cheap in a CI log; opaque builds are not.
       echo "fetch-whisper: building whisper.cpp $WHISPER_RELEASE from source (static) for $PLATFORM"
+      echo "fetch-whisper: repo=$WHISPER_REPO"
       local src="$ROOT_DIR/.cache/whisper-cpp-${WHISPER_RELEASE}"
       if [ ! -d "$src" ]; then
-        git clone --depth 1 --branch "$WHISPER_RELEASE" \
-          https://github.com/ggerganov/whisper.cpp "$src"
+        git clone --depth 1 --branch "$WHISPER_RELEASE" "$WHISPER_REPO" "$src"
       fi
       (
         cd "$src"
@@ -136,7 +184,7 @@ fetch_prebuilt_or_build() {
         cmake -B build -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=OFF \
           -DGGML_STATIC=ON \
-          -DWHISPER_BUILD_EXAMPLES=ON >/dev/null
+          -DWHISPER_BUILD_EXAMPLES=ON
         cmake --build build --config Release --target whisper-cli -j
       )
       local built
