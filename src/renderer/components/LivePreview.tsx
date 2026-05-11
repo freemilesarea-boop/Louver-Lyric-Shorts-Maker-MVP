@@ -71,6 +71,11 @@ interface Props {
     point: { x: number; y: number } | undefined,
   ) => void;
   forcedChunkIndex?: number | null;
+  /** Phase 5-8.1 — Fires whenever the inner <video> element errors or
+   *  the 5s canplay watchdog trips. The parent (EditorScreen) uses it
+   *  to surface the MediaValidationBanner with forceShow=true so the
+   *  user gets the same one-click transcode UX they had on Start. */
+  onVideoUnsupported?: () => void;
 }
 
 const PREVIEW_FRAME_INTERVAL_MS = 1000 / 30;
@@ -175,26 +180,33 @@ export default function LivePreview(props: Props): JSX.Element {
         debugSnapshot('error');
         setVideoError(`영상 로딩 실패 (${msg})`);
         setPhoto(null);
+        // Phase 5-8.1: code 4 = MEDIA_ERR_SRC_NOT_SUPPORTED. The most
+        // common cause is an HEVC / ProRes / 10-bit pixel-format
+        // source. Hand the signal to the parent so its
+        // MediaValidationBanner pops with detected info + transcode.
+        props.onVideoUnsupported?.();
       });
       v.src = props.imageDataUrl;
       // Force the network start — some Chromium builds defer until the
       // element is attached to the DOM, which we never do.
       v.load();
 
-      // 10s watchdog. If canplay hasn't fired by then, assume the
-      // stream isn't decoding and tell the user concretely. We probe
-      // `v.readyState` directly (canonical source of truth) instead of
-      // the React `photo` state which would be stale inside this
-      // closure.
+      // Phase 5-8.1: 5s watchdog (was 10s). If canplay hasn't fired
+      // by then the codec is almost certainly the problem — we surface
+      // a concrete error and the EditorScreen's MediaValidationBanner
+      // (forceShow=true) appears with the detected codec + a
+      // one-click transcode. Probe `v.readyState` directly (canonical
+      // source of truth) instead of the stale React `photo` closure.
       const watchdog = window.setTimeout(() => {
         if (cancelled) return;
         debugSnapshot('watchdog');
         if (v.readyState < 3 /* HAVE_FUTURE_DATA */) {
           setVideoError(
-            '영상 로딩이 너무 오래 걸려요. 파일을 다시 선택하거나 다른 영상을 시도해주세요.',
+            '영상 로딩이 5초 안에 시작되지 않았어요. 코덱 호환성 문제일 가능성이 높습니다. 아래 "변환하기"를 눌러보세요.',
           );
+          props.onVideoUnsupported?.();
         }
-      }, 10000);
+      }, 5000);
 
       return () => {
         cancelled = true;

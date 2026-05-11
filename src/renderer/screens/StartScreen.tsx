@@ -2,6 +2,7 @@ import { useProjectStore } from '../store/projectStore';
 import { api } from '../lib/api';
 import { useState } from 'react';
 import HelpPanel from '../components/HelpPanel';
+import MediaValidationBanner from '../components/MediaValidationBanner';
 import type { MediaKind } from '../../shared/types';
 
 function detectMediaKind(path: string): MediaKind {
@@ -161,6 +162,18 @@ export default function StartScreen(): JSX.Element {
             badge={audioPath ? '✓ 선택됨' : null}
           />
         </div>
+
+        {/* Phase 5-8.1 — codec validation banner. Hidden when the file
+         *  is an image / gif / supported video; shown with detected
+         *  codec + transcode button otherwise. */}
+        <MediaValidationBanner
+          path={imagePath}
+          kind={mainMediaKind}
+          onTranscoded={async (newPath) => {
+            const src = await api().toMediaUrl(newPath);
+            setImage(newPath, src, 'video');
+          }}
+        />
 
         {error && (
           <div className="mt-6 rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">

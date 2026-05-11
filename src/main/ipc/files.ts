@@ -2,7 +2,7 @@ import { dialog, IpcMain, BrowserWindow, app } from 'electron';
 import { promises as fs } from 'node:fs';
 import { join, basename } from 'node:path';
 import { spawn } from 'node:child_process';
-import { ffprobePath } from '../render/binaries';
+import { ffmpegPath, ffprobePath } from '../render/binaries';
 import { analyzeAmplitude } from '../audio/analyze';
 import {
   WhisperNotInstalledError,
@@ -19,6 +19,12 @@ import {
 } from '../storage/customPresets';
 import { loadBundledFonts } from '../storage/fontFiles';
 import { pathToMediaUrl, readImageAsDataURL } from './mediaUrl';
+import {
+  isSupportedForPreview,
+  probeMedia,
+  recommendedTranscodeArgs,
+  type MediaProbe,
+} from './mediaProbe';
 import type { AudioMeta, LanguageCode, LyricLine } from '../../shared/types';
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp'];
@@ -77,6 +83,52 @@ export function registerFileHandlers(
   ipcMain.handle('files:probeAudio', async (_e, audioPath: string): Promise<AudioMeta> => {
     return probeDuration(audioPath);
   });
+
+  // Phase 5-8.1 — probe a main-media file (mp4/mov/webm/gif) and tell
+  // the renderer whether Chromium's <video> can decode it for preview.
+  // Used by the StartScreen / LivePreview validation banner to either
+  // proceed straight to preview or surface a "변환하기" affordance.
+  ipcMain.handle(
+    'files:probeMedia',
+    async (
+      _e,
+      mediaPath: string,
+    ): Promise<{
+      probe: MediaProbe;
+      supported: boolean;
+      reason: string;
+    }> => {
+      const probe = await probeMedia(mediaPath, ffprobePath);
+      const verdict = isSupportedForPreview(probe);
+      return { probe, supported: verdict.supported, reason: verdict.reason };
+    },
+  );
+
+  // Phase 5-8.1 — transcode an arbitrary input video into a
+  // preview-friendly MP4 (libx264 / yuv420p / -an). The output lands
+  // under app.getPath('temp') so it's automatically cleaned when the
+  // OS rotates temp space. Returns the absolute path the renderer can
+  // hand back to setImage(). Progress events are emitted on the
+  // 'transcode:progress' channel so the UI can show a percent bar.
+  ipcMain.handle(
+    'files:transcodeMainMedia',
+    async (
+      _e,
+      srcPath: string,
+    ): Promise<{ ok: true; outputPath: string } | { ok: false; error: string }> => {
+      const tmpRoot = await fs.mkdtemp(
+        join(app.getPath('temp'), 'lyric-shorts-transcode-'),
+      );
+      const outputPath = join(tmpRoot, 'converted-main-media.mp4');
+      const args = recommendedTranscodeArgs(srcPath, outputPath);
+      try {
+        await runFfmpegTranscode(args, getWin);
+        return { ok: true, outputPath };
+      } catch (err) {
+        return { ok: false, error: prettyErrorMessage(err) };
+      }
+    },
+  );
 
   ipcMain.handle(
     'audio:analyzeAmplitude',
@@ -170,6 +222,65 @@ export function registerFileHandlers(
   });
 
   ipcMain.handle('files:basename', (_e, p: string) => basename(p));
+}
+
+/**
+ * Phase 5-8.1 — run ffmpeg for the transcode IPC. Parses `out_time_ms`
+ * from `-progress pipe:2` so the renderer can show a percent bar; the
+ * total duration is read once from the input via a one-shot ffprobe so
+ * we don't have to keep state across events.
+ */
+async function runFfmpegTranscode(
+  args: string[],
+  getWin: () => BrowserWindow | null,
+): Promise<void> {
+  // Add progress reporting via stderr so we don't compete with the
+  // user's `-vf scale=...` filter graph on stdout. ffmpeg's -progress
+  // writes structured key=value pairs; we parse out_time_ms and
+  // forward it as `transcode:progress` IPC events.
+  const augmented = [...args, '-progress', 'pipe:2', '-nostats'];
+  // ffmpeg's source path is at index 2 (after -y -i). We probe its
+  // duration so percent = out_time_ms / total can be reported.
+  const srcIdx = augmented.indexOf('-i') + 1;
+  const sourceDurationSec = srcIdx > 0
+    ? await probeSourceDurationSec(augmented[srcIdx])
+    : 0;
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegPath, augmented);
+    let stderrTail = '';
+    child.stderr.on('data', (chunk) => {
+      const text = chunk.toString();
+      // Keep a rolling tail of stderr so we can include real errors in
+      // the rejection. ffmpeg emits a LOT, so cap at 4 KB.
+      stderrTail = (stderrTail + text).slice(-4096);
+      // Parse progress lines.
+      const m = text.match(/out_time_ms=(\d+)/);
+      if (m && sourceDurationSec > 0) {
+        const outSec = parseInt(m[1], 10) / 1_000_000;
+        const pct = Math.max(0, Math.min(100, (outSec / sourceDurationSec) * 100));
+        const win = getWin();
+        if (win) win.webContents.send('transcode:progress', { percent: pct });
+      }
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        const win = getWin();
+        if (win) win.webContents.send('transcode:progress', { percent: 100 });
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          `ffmpeg transcode failed (exit ${code}): ${stderrTail.slice(-800)}`,
+        ),
+      );
+    });
+  });
+}
+
+function probeSourceDurationSec(path: string): Promise<number> {
+  return probeDuration(path).then((m) => m.durationSec).catch(() => 0);
 }
 
 function probeDuration(path: string): Promise<AudioMeta> {

@@ -12,6 +12,7 @@ import {
 import { api } from '../lib/api';
 import { buildOverlays } from '../lib/overlays';
 import LivePreview from '../components/LivePreview';
+import MediaValidationBanner from '../components/MediaValidationBanner';
 import LyricsEditor from '../components/LyricsEditor';
 import LyricTimeline from '../components/LyricTimeline';
 import LanguageSelector from '../components/LanguageSelector';
@@ -46,6 +47,15 @@ export default function EditorScreen(): JSX.Element {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  /** Phase 5-8.1 — set when LivePreview's <video> errors or its 5s
+   *  canplay watchdog trips. Forces the MediaValidationBanner to show
+   *  even if the file was an extension we'd have skipped probing. */
+  const [videoUnsupported, setVideoUnsupported] = useState(false);
+  // Clear the unsupported flag the moment the user picks a new file
+  // — the new path may well be fine.
+  useEffect(() => {
+    setVideoUnsupported(false);
+  }, [state.imagePath]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -264,7 +274,24 @@ export default function EditorScreen(): JSX.Element {
             layoutOverrides={state.layoutOverrides}
             layoutEditMode={state.layoutEditMode}
             onLayoutChange={state.setLayoutOverride}
+            onVideoUnsupported={() => setVideoUnsupported(true)}
           />
+          {/* Phase 5-8.1 — codec banner. Hidden until the inner <video>
+            *  errors or the watchdog flags an unsupported source. On
+            *  transcode success we swap the store's main media so the
+            *  preview re-resolves with the new file. */}
+          <div className="w-full max-w-md">
+            <MediaValidationBanner
+              path={state.imagePath}
+              kind={state.mainMediaKind}
+              forceShow={videoUnsupported}
+              onTranscoded={async (newPath) => {
+                const src = await api().toMediaUrl(newPath);
+                state.setImage(newPath, src, 'video');
+                setVideoUnsupported(false);
+              }}
+            />
+          </div>
         </div>
         <div className="mt-2 w-full">
           <SafeZoneToggle />

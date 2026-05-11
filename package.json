@@ -25,6 +25,7 @@
     "test:whisper-bundle": "tsx scripts/test-whisper-bundle.ts",
     "test:display-toggles": "tsx scripts/test-display-toggles.ts",
     "test:media-protocol": "tsx scripts/test-media-protocol.ts",
+    "test:media-probe": "tsx scripts/test-media-probe.ts",
     "test:video-export": "tsx scripts/test-video-export.ts",
     "fetch:whisper": "bash scripts/fetch-whisper.sh",
     "postinstall": "electron-builder install-app-deps"

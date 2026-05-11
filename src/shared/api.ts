@@ -51,6 +51,29 @@ export interface TranscribeReply {
   notInstalled?: boolean;
 }
 
+/** Phase 5-8.1 — shape mirrors src/main/ipc/mediaProbe.ts MediaProbe. */
+export interface MediaProbeInfo {
+  format: string;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  pixelFormat: string | null;
+  durationSec: number;
+  width: number;
+  height: number;
+  frameRate: number;
+  hasAudio: boolean;
+}
+
+export interface MediaProbeReply {
+  probe: MediaProbeInfo;
+  supported: boolean;
+  reason: string;
+}
+
+export type TranscodeReply =
+  | { ok: true; outputPath: string }
+  | { ok: false; error: string };
+
 export interface WhisperAvailability {
   ok: boolean;
   kind?: 'python-whisper' | 'whisper-cpp';
@@ -95,6 +118,16 @@ export interface LyricShortsAPI {
   /** Returns a `media://` URL backed by the privileged Electron protocol.
    *  Safe for arbitrary file sizes — streamed, not buffered. */
   toMediaUrl(path: string): Promise<string>;
+  /** Phase 5-8.1 — ffprobe the file and report whether Chromium's
+   *  <video> will accept it for preview. Used by the validation
+   *  banner to decide between "go straight to preview" and "offer
+   *  transcode". */
+  probeMedia(path: string): Promise<MediaProbeReply>;
+  /** Phase 5-8.1 — transcode an unsupported source into a
+   *  preview-friendly libx264 / yuv420p / -an MP4 under the OS temp
+   *  dir. Progress events on `onTranscodeProgress`. */
+  transcodeMainMedia(path: string): Promise<TranscodeReply>;
+  onTranscodeProgress(cb: (p: { percent: number }) => void): () => void;
   fileExists(path: string): Promise<boolean>;
   basename(path: string): Promise<string>;
 
