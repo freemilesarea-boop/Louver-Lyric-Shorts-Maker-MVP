@@ -40,9 +40,15 @@ jobs:
           - os: macos-latest
             dist-script: dist:mac
             artifact-name: dist-mac
+            # Phase 5-13.5 — also pack the macOS install readme at the
+            # TOP level of dist-mac.zip so users see the xattr command
+            # the moment they extract the artifact zip, without having
+            # to mount the .dmg first. Copied into release/ by the
+            # macos-only step below.
             artifact-glob: |
               release/*.dmg
               release/*.zip
+              release/INSTALL-macOS-필독.txt
           - os: windows-latest
             dist-script: dist:win
             artifact-name: dist-win
@@ -213,6 +219,19 @@ jobs:
         # matching magic number — Mach-O on macOS, PE on Windows, ELF
         # on Linux.
         run: npx tsx scripts/verify-packaged-binaries.ts
+
+      - name: Pack macOS install readme into dist-mac
+        # Phase 5-13.5 — macOS Sequoia (15.x) blocks unsigned apps and
+        # the System Settings → "Open Anyway" recovery path no longer
+        # works. Without paying for Apple Developer ID ($99/yr), the
+        # only reliable install path is `xattr -dr com.apple.quarantine`.
+        # We copy the install readme into release/ so it lands at the
+        # TOP level of dist-mac.zip — visible the moment the user
+        # extracts the artifact zip, without needing to mount the .dmg
+        # to discover the instructions.
+        if: matrix.os == 'macos-latest'
+        run: |
+          cp "build/dmg/INSTALL-macOS-필독.txt" release/
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

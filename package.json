@@ -121,22 +121,16 @@
       "icon": "build/icon.icns",
       "window": {
         "width": 660,
-        "height": 440
+        "height": 460
       },
       "contents": [
         { "x": 160, "y": 200, "type": "file" },
         { "x": 500, "y": 200, "type": "link", "path": "/Applications" },
         {
-          "x": 160,
-          "y": 360,
+          "x": 330,
+          "y": 380,
           "type": "file",
-          "path": "build/dmg/Unblock Lyric Shorts Maker.command"
-        },
-        {
-          "x": 500,
-          "y": 360,
-          "type": "file",
-          "path": "build/dmg/처음 실행이 안 되면 읽어주세요.txt"
+          "path": "build/dmg/INSTALL-macOS-필독.txt"
         }
       ]
     },
