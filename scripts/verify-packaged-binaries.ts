@@ -1,10 +1,9 @@
 /**
  * Verify that the ffmpeg-static / ffprobe-static binaries inside an
- * electron-builder dist output match the host OS — i.e. that we ran
- * `npm install` on the same OS we're packaging for. ffmpeg-static
- * downloads its single binary at install time keyed on
- * process.platform, so a cross-build silently bundles the wrong-OS
- * binary; this script catches that before we ship.
+ * electron-builder dist output match the TARGET OS — i.e. that the
+ * binaries packaged into win-unpacked/ are actually Windows .exe
+ * files (and not Linux ELFs or Mach-O Mach binaries that snuck in
+ * via a cross-build from the wrong host).
  *
  * Walks `release/*-unpacked/` for ffmpeg + ffprobe, peeks the first 16
  * bytes, and compares against the magic numbers expected for the
@@ -15,6 +14,16 @@
  *
  * Run it after `npm run dist:<os>` — the GitHub Actions matrix workflow
  * runs it as a gating step before uploading artifacts.
+ *
+ * Phase 5-11 stabilization: the target platform is inferred from the
+ * directory name (`win-unpacked` → win32, `mac-unpacked` → darwin,
+ * `linux-unpacked` → linux) instead of `process.platform`. This is
+ * the cross-build foot-gun fix: running `npm run dist:win` on a
+ * Linux host silently produces a `win-unpacked/` tree containing a
+ * Linux ELF ffmpeg (since ffmpeg-static only downloads the host OS
+ * binary at `npm install` time). Pre-fix the verifier passed because
+ * it expected Linux binaries on a Linux host. Post-fix it checks
+ * `win-unpacked → expects PE` and the wrong-arch binary is caught.
  */
 
 import { promises as fs } from 'node:fs';
@@ -67,70 +76,74 @@ interface BinaryCheck {
   required: boolean;
 }
 
-async function findBinariesToCheck(platform: Platform): Promise<BinaryCheck[]> {
-  const ext = platform === 'win32' ? '.exe' : '';
-  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-  const ffmpegName = `ffmpeg${ext}`;
-  const ffprobeRel = join('bin', platform, arch, `ffprobe${ext}`);
-  // Phase 5-7 — bundled whisper.cpp lands under
-  // `Resources/whisper/bin/<plat-key>/whisper-cli[.exe]` via
-  // electron-builder's extraResources rule. The plat-key matches what
-  // detectWhisperBinary builds at runtime.
-  const whisperPlatKey =
-    platform === 'darwin'
-      ? `darwin-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
-      : platform === 'win32'
-        ? 'win32-x64'
-        : 'linux-x64';
-  const whisperName = platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
-
-  // electron-builder lays the unpacked tree under different names per
-  // platform target — collect every plausible spot.
-  const unpackedRoots = await collectUnpackedRoots();
-  const checks: BinaryCheck[] = [];
-
-  for (const root of unpackedRoots) {
-    // ffmpeg-static is at <root>/.../ffmpeg-static/<ffmpegName>
-    const ffmpegCandidates = [
-      join(root, 'resources', 'app.asar.unpacked', 'node_modules', 'ffmpeg-static', ffmpegName),
-    ];
-    for (const p of ffmpegCandidates) {
-      if (await pathExists(p)) checks.push({ path: p, required: true });
-    }
-
-    // ffprobe-static is at <root>/.../ffprobe-static/bin/<platform>/<arch>/...
-    const ffprobeCandidates = [
-      join(root, 'resources', 'app.asar.unpacked', 'node_modules', 'ffprobe-static', ffprobeRel),
-    ];
-    for (const p of ffprobeCandidates) {
-      if (await pathExists(p)) checks.push({ path: p, required: true });
-    }
-
-    // Bundled whisper-cli (extraResources path: resources/whisper → whisper).
-    // Required when fetch-whisper.sh ran in CI; optional otherwise so the
-    // verifier doesn't fail builds that intentionally ship without it.
-    const whisperCandidates = [
-      join(root, 'resources', 'whisper', 'bin', whisperPlatKey, whisperName),
-    ];
-    for (const p of whisperCandidates) {
-      if (await pathExists(p)) checks.push({ path: p, required: false });
-    }
-  }
-  return checks;
+interface UnpackedRoot {
+  path: string;
+  /** Inferred from the directory name (win-unpacked → win32, etc.) */
+  target: Platform;
 }
 
-async function collectUnpackedRoots(): Promise<string[]> {
+async function findBinariesForTarget(
+  root: UnpackedRoot,
+): Promise<Array<BinaryCheck & { target: Platform }>> {
+  const { path: dir, target } = root;
+  const ext = target === 'win32' ? '.exe' : '';
+  // ffmpeg-static lays one binary at the package root. ffprobe-static
+  // ships per-platform under bin/<platform>/<arch>. Both should match
+  // the TARGET we're packaging for.
+  const arch = 'x64';
+  const ffmpegName = `ffmpeg${ext}`;
+  const ffprobeRel = join('bin', target, arch, `ffprobe${ext}`);
+  const whisperPlatKey =
+    target === 'darwin' ? `darwin-x64` : target === 'win32' ? 'win32-x64' : 'linux-x64';
+  const whisperName = target === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
+
+  const out: Array<BinaryCheck & { target: Platform }> = [];
+  const ffmpegDir = join(dir, 'resources', 'app.asar.unpacked', 'node_modules', 'ffmpeg-static');
+  // Look for BOTH expected and wrong-extension names so we catch the
+  // cross-build foot-gun: ffmpeg-static on Linux drops a binary
+  // literally named `ffmpeg` (no .exe). When we package for win32
+  // FROM a Linux host that file gets bundled as-is — ffmpeg.exe
+  // never exists. The verifier used to look for ffmpeg.exe only, so
+  // the wrong-arch ELF slipped through. Now we check whichever
+  // `ffmpeg*` file actually exists, and the magic-byte check below
+  // will reject it (Linux ELF in a win-unpacked tree → BAD).
+  for (const name of [ffmpegName, 'ffmpeg', 'ffmpeg.exe']) {
+    const p = join(ffmpegDir, name);
+    if (await pathExists(p)) {
+      out.push({ path: p, required: true, target });
+      break;
+    }
+  }
+  const ffprobePath = join(
+    dir,
+    'resources',
+    'app.asar.unpacked',
+    'node_modules',
+    'ffprobe-static',
+    ffprobeRel,
+  );
+  if (await pathExists(ffprobePath)) {
+    out.push({ path: ffprobePath, required: true, target });
+  }
+  const whisperPath = join(dir, 'resources', 'whisper', 'bin', whisperPlatKey, whisperName);
+  if (await pathExists(whisperPath)) {
+    out.push({ path: whisperPath, required: false, target });
+  }
+  return out;
+}
+
+async function collectUnpackedRoots(): Promise<UnpackedRoot[]> {
   // Common electron-builder output dir names per target.
-  const candidates = [
-    'release/linux-unpacked',
-    'release/win-unpacked',
-    'release/mac/Lyric Shorts Maker.app/Contents',
-    'release/mac-arm64/Lyric Shorts Maker.app/Contents',
-    'release/mac-universal/Lyric Shorts Maker.app/Contents',
+  const candidates: UnpackedRoot[] = [
+    { path: 'release/linux-unpacked', target: 'linux' },
+    { path: 'release/win-unpacked', target: 'win32' },
+    { path: 'release/mac/Lyric Shorts Maker.app/Contents', target: 'darwin' },
+    { path: 'release/mac-arm64/Lyric Shorts Maker.app/Contents', target: 'darwin' },
+    { path: 'release/mac-universal/Lyric Shorts Maker.app/Contents', target: 'darwin' },
   ];
-  const found: string[] = [];
+  const found: UnpackedRoot[] = [];
   for (const c of candidates) {
-    if (await pathExists(c)) found.push(c);
+    if (await pathExists(c.path)) found.push(c);
   }
   return found;
 }
@@ -156,41 +169,55 @@ async function readMagic(path: string): Promise<Buffer> {
 }
 
 async function main(): Promise<void> {
-  const platform = process.platform as Platform;
-  if (!(platform in MAGIC)) {
-    console.error(`Unsupported platform: ${platform}`);
-    process.exit(1);
-  }
-  const expected = MAGIC[platform];
-  console.log(`Verifying packaged binaries match host platform: ${platform} (${expected.label})\n`);
-
-  const checks = await findBinariesToCheck(platform);
-  if (checks.length === 0) {
+  const roots = await collectUnpackedRoots();
+  if (roots.length === 0) {
     console.error(
-      'No packaged ffmpeg/ffprobe binaries found under release/. ' +
-        'Run `npm run dist:<os>` before this script.',
+      'No packaged tree found under release/. Run `npm run dist:<os>` before this script.',
     );
     process.exit(1);
   }
+
+  console.log('Verifying packaged binaries match their TARGET platform.\n');
+  console.log(`Host: ${process.platform}/${process.arch}`);
+  console.log(`Targets found: ${roots.map((r) => r.target).join(', ')}\n`);
 
   let allOk = true;
-  for (const { path } of checks) {
-    const head = await readMagic(path);
-    const ok = expected.matches(head);
-    const hex = Array.from(head.slice(0, 4))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join(' ');
-    console.log(
-      `  ${ok ? 'OK ' : 'BAD'} ${path}\n      magic=${hex}  expected=${expected.label}`,
-    );
-    if (!ok) allOk = false;
+  let totalChecked = 0;
+  for (const root of roots) {
+    const expected = MAGIC[root.target];
+    const checks = await findBinariesForTarget(root);
+    if (checks.length === 0) {
+      console.warn(`  (no binaries under ${root.path} — skipping)`);
+      continue;
+    }
+    console.log(`-- ${root.target} (${root.path}) ${'-'.repeat(40)}`);
+    for (const { path } of checks) {
+      const head = await readMagic(path);
+      const ok = expected.matches(head);
+      const hex = Array.from(head.slice(0, 4))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join(' ');
+      console.log(
+        `  ${ok ? 'OK ' : 'BAD'} ${path}\n      magic=${hex}  expected=${expected.label}`,
+      );
+      if (!ok) allOk = false;
+      totalChecked++;
+    }
   }
 
   console.log();
-  if (allOk) {
-    console.log(`ALL ${checks.length} BINARIES MATCH HOST PLATFORM`);
+  if (allOk && totalChecked > 0) {
+    console.log(`ALL ${totalChecked} BINARIES MATCH THEIR TARGET PLATFORM`);
+  } else if (!allOk) {
+    console.error(
+      `SOME BINARIES DON'T MATCH THEIR TARGET PLATFORM — likely a cross-build mistake.\n` +
+        `Cause: ffmpeg-static downloads only the HOST OS binary at \`npm install\` time.\n` +
+        `Fix:   build the Windows installer on a Windows runner (CI matrix already does this),\n` +
+        `       or rerun \`npm install\` on the target OS before \`npm run dist:<os>\`.`,
+    );
+    process.exit(1);
   } else {
-    console.error(`SOME BINARIES DON'T MATCH HOST PLATFORM — likely a cross-build mistake`);
+    console.warn('No binaries checked. Was the dist step skipped?');
     process.exit(1);
   }
 }
