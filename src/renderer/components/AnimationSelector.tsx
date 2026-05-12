@@ -12,7 +12,7 @@ export default function AnimationSelector(): JSX.Element {
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="rounded-full bg-white/10 px-2 py-1 text-white/70">
-        Template default:&nbsp;
+        템플릿 기본:&nbsp;
         <span className="font-semibold text-white">{ANIMATION_LABEL[templateDefault]}</span>
       </span>
       <select
@@ -22,9 +22,9 @@ export default function AnimationSelector(): JSX.Element {
           setManual(v === '__auto__' ? null : (v as AnimationPreset));
         }}
         className="rounded-md border border-white/10 bg-ink-800 px-2 py-1 text-xs focus:border-white/40 focus:outline-none"
-        title="가사 애니메이션 수동 선택 (템플릿 기본값 무시)"
+        title="가사 애니메이션 직접 선택"
       >
-        <option value="__auto__">Auto ({ANIMATION_LABEL[templateDefault]})</option>
+        <option value="__auto__">자동 ({ANIMATION_LABEL[templateDefault]})</option>
         {ANIMATION_PRESETS.map((p) => (
           <option key={p} value={p}>
             {ANIMATION_LABEL[p]}
@@ -33,7 +33,7 @@ export default function AnimationSelector(): JSX.Element {
       </select>
       {manual && (
         <span className="rounded-full bg-accent/20 px-2 py-1 text-accent">
-          Manual: {ANIMATION_LABEL[effective]}
+          직접 선택: {ANIMATION_LABEL[effective]}
         </span>
       )}
     </div>

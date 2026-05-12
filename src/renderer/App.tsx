@@ -45,13 +45,31 @@ export default function App(): JSX.Element {
   }, [setRenderProgress, setLastOutputPath, setIsRendering]);
 
   return (
-    <div className="flex h-screen flex-col bg-ink-950 text-white">
+    <div className="relative flex h-screen flex-col bg-ink-950 text-white">
       <Topbar />
       <main className="flex-1 overflow-hidden">
         {screen === 'start' && <StartScreen />}
         {screen === 'editor' && <EditorScreen />}
         {screen === 'export' && <ExportScreen />}
       </main>
+      <LouverAppBrand />
+    </div>
+  );
+}
+
+/**
+ * Always-visible app brand at the bottom-left of the window. Distinct from
+ * the per-render export watermark — that one ships in the MP4 and is user-
+ * toggleable. This one is the desktop app's own brand mark, like a chrome.
+ */
+function LouverAppBrand(): JSX.Element {
+  return (
+    <div
+      className="pointer-events-none fixed bottom-2 left-3 z-20 select-none text-[10px] leading-tight text-white/40"
+      aria-label="Louver Lyric Shorts Maker"
+    >
+      <div className="font-semibold tracking-wide text-white/55">Louver</div>
+      <div>Lyric Shorts Maker · v0.1.0</div>
     </div>
   );
 }
@@ -83,13 +101,13 @@ function Topbar(): JSX.Element {
         <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-accent to-accent-soft" />
         <div>
           <div className="text-sm font-semibold tracking-tight">Lyric Shorts Maker</div>
-          <div className="text-[11px] text-white/40">MVP · 9:16 · 1080×1920</div>
+          <div className="text-[11px] text-white/40">9:16 세로 영상 · 1080×1920</div>
         </div>
       </div>
       <div className="flex items-center gap-2">
-        {stage('1. Start', 'start', true)}
-        {stage('2. Editor', 'editor', true)}
-        {stage('3. Export', 'export', true)}
+        {stage('1. 시작', 'start', true)}
+        {stage('2. 편집', 'editor', true)}
+        {stage('3. 출력', 'export', true)}
       </div>
     </header>
   );

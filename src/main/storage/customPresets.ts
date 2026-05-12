@@ -7,17 +7,28 @@ import type {
   CustomPreset,
   FxPreset,
   LanguageCode,
+  LayoutOverrides,
   MotionPreset,
   ReactiveMode,
+  StyleOverrides,
 } from '../../shared/types';
 
 /**
  * Custom preset persistence.
  *
- * Storage: `<app userData>/custom-presets.json`. Atomic write via temp +
+ * Storage: `<userData>/custom-presets.json`. Atomic write via temp +
  * rename so a crash mid-save can't corrupt the file. Reads are
  * fault-tolerant — if the file is missing, empty, or malformed we log and
  * return an empty list rather than crash.
+ *
+ * Path resolution (resolved fresh on every call so test env-var overrides
+ * applied after this module loads still take effect):
+ *   1. `process.env.LSM_USER_DATA_DIR` — test seam. Used by rc-qa.ts so
+ *      it can run the round-trip without an Electron `app` instance and
+ *      without spawning a child process to mock 'electron'.
+ *   2. `app.getPath('userData')` — production. Electron resolves to
+ *      `~/Library/Application Support/<app>` (macOS), `%APPDATA%\<app>`
+ *      (Windows), or `~/.config/<app>` (Linux).
  */
 
 const FILE_NAME = 'custom-presets.json';
@@ -30,10 +41,16 @@ interface StoredFile {
 
 const EMPTY: StoredFile = { version: FILE_VERSION, presets: [] };
 
+function userDataDir(): string {
+  // Env-var seam first — production never sets this. Read on every call
+  // so test code that sets the env after module import still works.
+  const fromEnv = process.env.LSM_USER_DATA_DIR;
+  if (fromEnv && fromEnv.length > 0) return fromEnv;
+  return app.getPath('userData');
+}
+
 function filePath(): string {
-  // app.getPath('userData') is OS-correct (e.g. ~/Library/Application Support/<app>
-  // on macOS, %APPDATA%\<app> on Windows).
-  return join(app.getPath('userData'), FILE_NAME);
+  return join(userDataDir(), FILE_NAME);
 }
 
 export async function listPresets(): Promise<CustomPreset[]> {
@@ -49,6 +66,14 @@ export interface SaveInput {
   reactiveMode: ReactiveMode;
   cinematicFxPreset: FxPreset;
   language: LanguageCode | null;
+  /** Optional user style tweaks. Stored alongside the preset so saving a
+   *  custom look + reloading later restores the same border / lyric
+   *  colors / scale the user picked. */
+  styleOverrides?: StyleOverrides;
+  /** Optional per-element drag positions. Phase 5-5+. Older presets
+   *  saved before this field existed roundtrip as undefined and reset
+   *  to template defaults on load. */
+  layoutOverrides?: LayoutOverrides;
   /**
    * If a preset with the same (case-insensitive) name already exists and
    * `forceOverwrite` is false, the IPC reply includes `conflict: true` so
@@ -83,6 +108,14 @@ export async function savePreset(input: SaveInput): Promise<SaveResult> {
   }
 
   const now = Date.now();
+  // Persist style/layout overrides only when at least one knob is set,
+  // so the JSON file stays small for default presets.
+  const overrides = input.styleOverrides && Object.keys(input.styleOverrides).length > 0
+    ? input.styleOverrides
+    : undefined;
+  const layout = input.layoutOverrides && Object.keys(input.layoutOverrides).length > 0
+    ? input.layoutOverrides
+    : undefined;
   let next: CustomPreset;
   if (existing) {
     next = {
@@ -94,6 +127,8 @@ export async function savePreset(input: SaveInput): Promise<SaveResult> {
       reactiveMode: input.reactiveMode,
       cinematicFxPreset: input.cinematicFxPreset,
       language: input.language,
+      styleOverrides: overrides,
+      layoutOverrides: layout,
       updatedAt: now,
     };
     file.presets = file.presets.map((p) => (p.id === existing.id ? next : p));
@@ -107,6 +142,8 @@ export async function savePreset(input: SaveInput): Promise<SaveResult> {
       reactiveMode: input.reactiveMode,
       cinematicFxPreset: input.cinematicFxPreset,
       language: input.language,
+      styleOverrides: overrides,
+      layoutOverrides: layout,
       createdAt: now,
       updatedAt: now,
     };

@@ -4,14 +4,17 @@ import type {
   AnimationPreset,
   FxPreset,
   LanguageCode,
+  LayoutOverrides,
   LyricLine,
   LyricPosition,
   MotionPreset,
   ReactiveMode,
   RenderProgress,
   RenderTimings,
+  StyleOverrides,
   Template,
 } from '../../shared/types';
+import { EMPTY_LAYOUT_OVERRIDES, EMPTY_STYLE_OVERRIDES } from '../../shared/types';
 import { templates } from '../templates/templates';
 import { detectLanguage } from '../../shared/lang';
 import type { FontKey } from '../../shared/fonts';
@@ -50,8 +53,24 @@ export interface BatchItem {
 interface ProjectState {
   screen: Screen;
 
+  /** Main media (the user's primary photo / gif / video). The path
+   *  field is named `imagePath` for backwards-compat — see
+   *  `mainMediaKind` for what's actually in there. */
   imagePath: string | null;
+  /** Renderable src for <img>/<video> elements. Phase 5-6.1: this is
+   *  a data: URL only for small still images; gif / video / oversized
+   *  images go through the privileged `media://` scheme so we never
+   *  base64-encode large files (V8 caps single-string size at ~512MB). */
   imageDataUrl: string | null;
+  /** Phase 5-6: kind of the main media. Drives how preview + export
+   *  feed it to ffmpeg/canvas. Defaults to 'image' for legacy/empty
+   *  state; populated by the file picker based on extension. */
+  mainMediaKind: import('../../shared/types').MediaKind;
+  /** Optional background media. When null the main image doubles as the
+   *  background (legacy behavior). When set, renderScene + ffmpeg use this
+   *  as the blurred backdrop and `imagePath` as the foreground card. */
+  backgroundImagePath: string | null;
+  backgroundImageDataUrl: string | null;
   audioPath: string | null;
   audioDataUrl: string | null;
   audioDurationSec: number;
@@ -115,6 +134,20 @@ interface ProjectState {
   watermarkText: string;
   watermarkPosition: WatermarkPosition;
 
+  /** Per-project visual tweaks. Empty object = use template defaults
+   *  unchanged. Each field is independently optional so the user can
+   *  override one knob without committing to all. Persists into custom
+   *  presets. */
+  styleOverrides: StyleOverrides;
+
+  /** Per-element drag positions (canonical 1080×1920). Empty by default;
+   *  populated as the user drags elements in "위치 편집 모드". Persists
+   *  into custom presets. */
+  layoutOverrides: LayoutOverrides;
+  /** When true, the preview shows drag handles on layoutable elements
+   *  and listens for drag gestures. Preview-only state, never exported. */
+  layoutEditMode: boolean;
+
   selectedTemplateId: string;
 
   outputDir: string | null;
@@ -132,7 +165,12 @@ interface ProjectState {
   batchFinishedAt: number | null;
 
   setScreen: (s: Screen) => void;
-  setImage: (p: string | null, dataUrl?: string | null) => void;
+  setImage: (
+    p: string | null,
+    dataUrl?: string | null,
+    kind?: import('../../shared/types').MediaKind,
+  ) => void;
+  setBackgroundImage: (p: string | null, dataUrl?: string | null) => void;
   setAudio: (p: string | null, dataUrl?: string | null, durationSec?: number) => void;
   setStartSec: (s: number) => void;
   setDurationSec: (d: 15 | 30 | 60) => void;
@@ -159,6 +197,15 @@ interface ProjectState {
   setWatermarkEnabled: (v: boolean) => void;
   setWatermarkText: (s: string) => void;
   setWatermarkPosition: (p: WatermarkPosition) => void;
+  /** Patch the styleOverrides with the provided partial — keys with
+   *  `undefined` clear that override, keys with a value set it. */
+  setStyleOverrides: (patch: Partial<StyleOverrides>) => void;
+  resetStyleOverrides: () => void;
+  /** Set or clear a single layout element's position. Passing
+   *  `undefined` for `point` clears that element's override. */
+  setLayoutOverride: (key: keyof LayoutOverrides, point: { x: number; y: number } | undefined) => void;
+  resetLayoutOverrides: () => void;
+  setLayoutEditMode: (v: boolean) => void;
   setSelectedTemplate: (id: string) => void;
   setOutputDir: (dir: string | null) => void;
 
@@ -226,6 +273,9 @@ export const useProjectStore = create<ProjectState>((set) => ({
   screen: 'start',
   imagePath: null,
   imageDataUrl: null,
+  mainMediaKind: 'image',
+  backgroundImagePath: null,
+  backgroundImageDataUrl: null,
   audioPath: null,
   audioDataUrl: null,
   audioDurationSec: 0,
@@ -256,6 +306,9 @@ export const useProjectStore = create<ProjectState>((set) => ({
   watermarkEnabled: DEFAULT_WATERMARK_CONFIG.enabled,
   watermarkText: DEFAULT_WATERMARK_CONFIG.text,
   watermarkPosition: DEFAULT_WATERMARK_CONFIG.position,
+  styleOverrides: { ...EMPTY_STYLE_OVERRIDES },
+  layoutOverrides: { ...EMPTY_LAYOUT_OVERRIDES },
+  layoutEditMode: false,
 
   selectedTemplateId: templates[0].id,
 
@@ -273,8 +326,17 @@ export const useProjectStore = create<ProjectState>((set) => ({
   batchFinishedAt: null,
 
   setScreen: (screen) => set({ screen }),
-  setImage: (imagePath, imageDataUrl = null) =>
-    set({ imagePath, imageDataUrl: imageDataUrl ?? null }),
+  setImage: (imagePath, imageDataUrl = null, kind) =>
+    set({
+      imagePath,
+      imageDataUrl: imageDataUrl ?? null,
+      mainMediaKind: kind ?? 'image',
+    }),
+  setBackgroundImage: (backgroundImagePath, backgroundImageDataUrl = null) =>
+    set({
+      backgroundImagePath,
+      backgroundImageDataUrl: backgroundImageDataUrl ?? null,
+    }),
   setAudio: (audioPath, audioDataUrl = null, audioDurationSec) =>
     set((s) => ({
       audioPath,
@@ -339,6 +401,39 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setWatermarkEnabled: (watermarkEnabled) => set({ watermarkEnabled }),
   setWatermarkText: (watermarkText) => set({ watermarkText }),
   setWatermarkPosition: (watermarkPosition) => set({ watermarkPosition }),
+  setStyleOverrides: (patch) =>
+    set((s) => {
+      const next: StyleOverrides = { ...s.styleOverrides };
+      // Treat undefined as "clear this override" so the UI can ship a
+      // single setter for both apply + clear.
+      for (const [key, value] of Object.entries(patch) as Array<
+        [keyof StyleOverrides, StyleOverrides[keyof StyleOverrides]]
+      >) {
+        if (value === undefined) {
+          delete next[key];
+        } else {
+          (next as Record<string, unknown>)[key] = value;
+        }
+      }
+      return { styleOverrides: next };
+    }),
+  resetStyleOverrides: () => set({ styleOverrides: { ...EMPTY_STYLE_OVERRIDES } }),
+  setLayoutOverride: (key, point) =>
+    set((s) => {
+      const next: LayoutOverrides = { ...s.layoutOverrides };
+      if (point === undefined) {
+        delete next[key];
+      } else {
+        // Clamp to canonical canvas to avoid off-frame drags.
+        const x = Math.max(0, Math.min(1080, point.x));
+        const y = Math.max(0, Math.min(1920, point.y));
+        next[key] = { x, y };
+      }
+      return { layoutOverrides: next };
+    }),
+  resetLayoutOverrides: () =>
+    set({ layoutOverrides: { ...EMPTY_LAYOUT_OVERRIDES } }),
+  setLayoutEditMode: (layoutEditMode) => set({ layoutEditMode }),
   setSelectedTemplate: (selectedTemplateId) => set({ selectedTemplateId }),
   setOutputDir: (outputDir) => set({ outputDir }),
 
@@ -397,6 +492,10 @@ export function effectiveReactive(state: ProjectState): ReactiveMode {
   if (state.manualReactiveMode) return state.manualReactiveMode;
   const tpl = templates.find((t) => t.id === state.selectedTemplateId) ?? templates[0];
   return tpl.reactiveMode ?? 'none';
+}
+
+export function effectiveLayout(state: ProjectState): LayoutOverrides {
+  return state.layoutOverrides;
 }
 
 export function effectiveWatermark(

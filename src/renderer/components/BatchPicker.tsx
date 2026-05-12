@@ -99,6 +99,8 @@ export default function BatchPicker(): JSX.Element {
       items,
       {
         imagePath: state.imagePath,
+        mainMediaKind: state.mainMediaKind,
+        backgroundImagePath: state.backgroundImagePath,
         audioPath: state.audioPath,
         lyrics: state.parsedLyrics,
         startSec: state.startSec,
@@ -117,6 +119,8 @@ export default function BatchPicker(): JSX.Element {
           text: state.watermarkText,
           position: state.watermarkPosition,
         },
+        styleOverrides: state.styleOverrides,
+        layoutOverrides: state.layoutOverrides,
       },
       {
         isCancelRequested: () => useProjectStore.getState().batchCancelRequested,

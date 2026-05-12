@@ -12,6 +12,7 @@ import {
 import { api } from '../lib/api';
 import { buildOverlays } from '../lib/overlays';
 import LivePreview from '../components/LivePreview';
+import MediaValidationBanner from '../components/MediaValidationBanner';
 import LyricsEditor from '../components/LyricsEditor';
 import LyricTimeline from '../components/LyricTimeline';
 import LanguageSelector from '../components/LanguageSelector';
@@ -32,6 +33,7 @@ import { prettyErrorMessage } from '../../shared/errors';
 import { getExportPreset } from '../../shared/exportPresets';
 import ExportPresetSelector from '../components/ExportPresetSelector';
 import WatermarkSelector from '../components/WatermarkSelector';
+import StyleOverridesPanel from '../components/StyleOverridesPanel';
 
 export default function EditorScreen(): JSX.Element {
   const state = useProjectStore();
@@ -44,11 +46,35 @@ export default function EditorScreen(): JSX.Element {
   const watermark = effectiveWatermark(state);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  /** Phase 5-8.4 — surfaces .play() rejection (browser autoplay
+   *  policy, audio element src failed to load, etc.) so the user
+   *  doesn't tap the button repeatedly assuming nothing happened. */
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  /** Phase 5-8.1 — set when LivePreview's <video> errors or its 5s
+   *  canplay watchdog trips. Forces the MediaValidationBanner to show
+   *  even if the file was an extension we'd have skipped probing. */
+  const [videoUnsupported, setVideoUnsupported] = useState(false);
+  // Clear the unsupported flag the moment the user picks a new file
+  // — the new path may well be fine.
+  useEffect(() => {
+    setVideoUnsupported(false);
+  }, [state.imagePath]);
 
   useEffect(() => {
     if (!audioRef.current) return;
     audioRef.current.currentTime = state.startSec;
   }, [state.startSec]);
+
+  // Stop the preview if the user changes the selected window mid-play —
+  // otherwise the audio would keep going past the (now-stale) endSec.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a || !isPreviewPlaying) return;
+    a.pause();
+    setIsPreviewPlaying(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.startSec, state.durationSec, state.audioPath]);
 
   // Analyze amplitude when the audio path or selected range changes. The
   // result is stored once and reused by both preview and export.
@@ -76,11 +102,72 @@ export default function EditorScreen(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.audioPath, state.startSec, state.durationSec]);
 
+  // Toggle playback of the selected [startSec, startSec+durationSec]
+  // window. Stops automatically at the end via a `timeupdate` listener
+  // (more accurate than a setTimeout, which drifts when the browser
+  // throttles the tab). Re-clicking while playing pauses immediately.
   const onPreviewPlay = () => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = state.startSec;
-    audioRef.current.play();
-    setTimeout(() => audioRef.current?.pause(), state.durationSec * 1000);
+    setPreviewError(null);
+    const a = audioRef.current;
+    if (!a) {
+      setPreviewError('오디오 엘리먼트가 아직 준비되지 않았어요. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    if (isPreviewPlaying) {
+      a.pause();
+      setIsPreviewPlaying(false);
+      return;
+    }
+    // Phase 5-8.4 — defend against the audio element's src having
+    // failed to load (e.g. media:// protocol rejection). Without this
+    // probe the user sees nothing happen and assumes the button is
+    // broken. `error` is set whenever the element has hit an HTMLMedia
+    // error code; we report it before even attempting play().
+    if (a.error) {
+      setPreviewError(
+        `오디오 로딩에 실패해서 미리듣기를 시작할 수 없어요 ` +
+          `(code=${a.error.code}). 다른 오디오 파일을 선택해주세요.`,
+      );
+      return;
+    }
+    const endSec = state.startSec + state.durationSec;
+    a.currentTime = state.startSec;
+    const onTime = () => {
+      if (a.currentTime >= endSec) {
+        a.pause();
+        a.removeEventListener('timeupdate', onTime);
+        a.removeEventListener('pause', onPause);
+        setIsPreviewPlaying(false);
+      }
+    };
+    const onPause = () => {
+      a.removeEventListener('timeupdate', onTime);
+      a.removeEventListener('pause', onPause);
+      setIsPreviewPlaying(false);
+    };
+    a.addEventListener('timeupdate', onTime);
+    a.addEventListener('pause', onPause);
+    a.play()
+      .then(() => {
+        setIsPreviewPlaying(true);
+        // eslint-disable-next-line no-console
+        console.log(
+          '[audio:preview] play OK',
+          'src=', a.currentSrc?.slice(0, 80),
+          'currentTime=', a.currentTime,
+          'duration=', a.duration,
+        );
+      })
+      .catch((e: Error) => {
+        a.removeEventListener('timeupdate', onTime);
+        a.removeEventListener('pause', onPause);
+        // eslint-disable-next-line no-console
+        console.error('[audio:preview] play() rejected:', e);
+        setPreviewError(
+          `재생을 시작하지 못했어요: ${e.message || String(e)}. ` +
+            `오디오 파일이 손상되었거나 코덱이 지원되지 않을 수 있어요.`,
+        );
+      });
   };
 
   const onRender = async () => {
@@ -147,11 +234,15 @@ export default function EditorScreen(): JSX.Element {
         lyricPositionOverride: state.manualLyricPosition,
         fontKey: state.userFontKey,
         watermark,
+        styleOverrides: state.styleOverrides,
+        layoutOverrides: state.layoutOverrides,
       });
 
       const presetDef = getExportPreset(state.exportPresetKey);
       const result = await api().startRender({
         imagePath: state.imagePath,
+        mainMediaKind: state.mainMediaKind,
+        backgroundImagePath: state.backgroundImagePath,
         audioPath: state.audioPath,
         lyrics: state.parsedLyrics,
         template,
@@ -169,6 +260,8 @@ export default function EditorScreen(): JSX.Element {
         fxPreset,
         nameTag: presetDef.filenameSuffix,
         exportEncode: presetDef.encode,
+        styleOverrides: state.styleOverrides,
+        layoutOverrides: state.layoutOverrides,
       });
 
       if (!result.ok) {
@@ -188,11 +281,13 @@ export default function EditorScreen(): JSX.Element {
       {/* Left column: live preview */}
       <div className="flex min-h-0 flex-col items-center justify-center rounded-2xl border border-white/5 bg-ink-900 p-4">
         <div className="mb-2 text-xs uppercase tracking-widest text-white/40">
-          미리보기 · 1080×1920 (canvas)
+          미리보기 · 1080×1920
         </div>
         <div className="flex min-h-0 w-full flex-1 items-center justify-center">
           <LivePreview
             imageDataUrl={state.imageDataUrl}
+            mainMediaKind={state.mainMediaKind}
+            backgroundImageDataUrl={state.backgroundImageDataUrl}
             template={template}
             language={language}
             lyrics={state.parsedLyrics}
@@ -210,31 +305,96 @@ export default function EditorScreen(): JSX.Element {
             lyricPositionOverride={state.manualLyricPosition}
             fontKey={state.userFontKey}
             watermark={watermark}
+            styleOverrides={state.styleOverrides}
+            layoutOverrides={state.layoutOverrides}
+            layoutEditMode={state.layoutEditMode}
+            onLayoutChange={state.setLayoutOverride}
+            onVideoUnsupported={() => setVideoUnsupported(true)}
           />
         </div>
         <div className="mt-2 w-full">
           <SafeZoneToggle />
         </div>
+        <div className="mt-2 flex w-full items-center justify-between gap-2 text-[11px]">
+          <label className="flex cursor-pointer items-center gap-2 text-white/70">
+            <input
+              type="checkbox"
+              checked={state.layoutEditMode}
+              onChange={(e) => state.setLayoutEditMode(e.target.checked)}
+            />
+            위치 편집 모드 (가사 / 곡 정보 / 웨이브폼 드래그)
+          </label>
+          {Object.keys(state.layoutOverrides).length > 0 && (
+            <button
+              onClick={state.resetLayoutOverrides}
+              className="rounded-md bg-white/5 px-2 py-1 text-[10px] text-white/60 hover:bg-white/15 hover:text-white"
+            >
+              위치 초기화
+            </button>
+          )}
+        </div>
         <div className="mt-2 text-[10px] text-white/40">
-          이 미리보기는 export 와 동일한 scene renderer를 사용합니다.
+          미리보기와 출력 영상은 동일한 화면을 사용합니다.
+          {state.layoutEditMode &&
+            ' 핸들을 끌어 위치를 옮길 수 있어요. 더블클릭하면 기본값으로 돌아갑니다.'}
         </div>
       </div>
 
       {/* Right column: controls */}
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1">
-        <Section title="샘플 프리셋">
+        {/* Phase 5-8.3 — codec banner pinned to the TOP of the right
+          *  control column so it always has the full 500px width to
+          *  render. Previous placement (sibling of LivePreview canvas
+          *  inside a flex row) squeezed the card into ~150px and the
+          *  convert button wrapped off-screen. Renders only when there's
+          *  a probe-rejection OR a runtime decode failure — otherwise
+          *  the slot is empty. */}
+        <MediaValidationBanner
+          path={state.imagePath}
+          kind={state.mainMediaKind}
+          forceShow={videoUnsupported}
+          onPickAgain={async () => {
+            // "다른 영상 선택" — re-open the file picker. We reuse the
+            // StartScreen flow's IPC directly here so the user doesn't
+            // have to navigate back.
+            const path = await api().pickImage();
+            if (!path) return;
+            const ext = path.toLowerCase().split('.').pop() ?? '';
+            const kind =
+              ext === 'gif'
+                ? 'gif'
+                : ['mp4', 'mov', 'm4v', 'webm'].includes(ext)
+                  ? 'video'
+                  : 'image';
+            const src =
+              kind === 'image'
+                ? await api().readAsDataURL(path).catch(() => api().toFileUrl(path))
+                : await api().toFileUrl(path);
+            state.setImage(path, src, kind);
+            setVideoUnsupported(false);
+          }}
+          onTranscoded={async (newPath) => {
+            // eslint-disable-next-line no-console
+            console.log('[transcode:done] mainMediaPath →', newPath);
+            const src = await api().toFileUrl(newPath);
+            state.setImage(newPath, src, 'video');
+            setVideoUnsupported(false);
+          }}
+        />
+
+        <Section title="추천 스타일">
           <SamplePresetPicker />
         </Section>
 
-        <Section title="Style Controls">
+        <Section title="스타일 설정">
           <div className="space-y-4">
-            <SubControl label="Template">
+            <SubControl label="디자인 템플릿">
               <TemplateGallery />
             </SubControl>
-            <SubControl label="Photo Motion">
+            <SubControl label="사진 움직임">
               <MotionSelector />
             </SubControl>
-            <SubControl label="Lyric Animation">
+            <SubControl label="가사 애니메이션">
               <div className="space-y-2">
                 <AnimationSelector />
                 <label className="flex cursor-pointer items-center gap-2 text-[11px] text-white/70">
@@ -243,20 +403,24 @@ export default function EditorScreen(): JSX.Element {
                     checked={state.karaokeEnabled}
                     onChange={(e) => state.setKaraokeEnabled(e.target.checked)}
                   />
-                  Karaoke Sync (단어 단위 하이라이트, 기본 OFF)
+                  단어별 하이라이트 (노래방 효과, 기본 꺼짐)
                 </label>
               </div>
             </SubControl>
-            <SubControl label="Audio Reactive">
+            <SubControl label="음악 반응 효과">
               <ReactiveSelector />
             </SubControl>
-            <SubControl label="Cinematic FX">
+            <SubControl label="감성 필터">
               <CinematicFxSelector />
             </SubControl>
-            <SubControl label="Font">
+            <SubControl label="글씨체">
               <FontSelector />
             </SubControl>
           </div>
+        </Section>
+
+        <Section title="스타일 직접 조절">
+          <StyleOverridesPanel />
         </Section>
 
         <Section title="언어">
@@ -275,6 +439,8 @@ export default function EditorScreen(): JSX.Element {
               audioDataUrl={state.audioDataUrl}
               audioRef={audioRef}
               onPreviewPlay={onPreviewPlay}
+              isPreviewPlaying={isPreviewPlaying}
+              previewError={previewError}
             />
             <HookSuggester />
           </div>
@@ -292,42 +458,42 @@ export default function EditorScreen(): JSX.Element {
           </div>
         </Section>
 
-        <Section title="줄별 타임라인">
+        <Section title="줄별 타이밍">
           <LyricTimeline audioRef={audioRef} />
         </Section>
 
-        <Section title="내 프리셋">
+        <Section title="내 스타일 저장">
           <CustomPresetPanel />
         </Section>
 
-        <Section title="배치 출력">
+        <Section title="여러 스타일 한 번에 만들기">
           <div className="space-y-1">
             <div className="text-[11px] text-white/50">
-              한 번에 여러 스타일로 자동 생성 — 단일 영상 출력은 아래 버튼에서.
+              한 번 클릭으로 여러 스타일을 자동 생성합니다. 단일 영상은 아래 "영상 만들기" 버튼.
             </div>
             <BatchPicker />
           </div>
         </Section>
 
-        <Section title="Export Preset">
+        <Section title="출력 용도">
           <ExportPresetSelector />
         </Section>
 
-        <Section title="Watermark">
+        <Section title="브랜드 표시">
           <WatermarkSelector />
         </Section>
 
-        <Section title="메타">
+        <Section title="곡 정보">
           <div className="grid grid-cols-2 gap-2">
             <input
               className="rounded-md border border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-white/30 focus:border-white/40 focus:outline-none"
-              placeholder="곡 제목 (선택)"
+              placeholder="곡 제목 (선택사항)"
               value={state.trackTitle}
               onChange={(e) => state.setTrackTitle(e.target.value)}
             />
             <input
               className="rounded-md border border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-white/30 focus:border-white/40 focus:outline-none"
-              placeholder="아티스트 (선택)"
+              placeholder="아티스트 (선택사항)"
               value={state.artistName}
               onChange={(e) => state.setArtistName(e.target.value)}
             />
@@ -352,7 +518,7 @@ export default function EditorScreen(): JSX.Element {
             disabled={!state.imagePath || !state.audioPath || state.isRendering}
             className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-ink-950 hover:bg-accent-soft disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
           >
-            영상 출력 →
+            영상 만들기 →
           </button>
         </div>
       </div>

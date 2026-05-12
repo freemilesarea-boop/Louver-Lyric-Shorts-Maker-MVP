@@ -2,9 +2,11 @@ import type {
   AmplitudeCurve,
   CustomPreset,
   LanguageCode,
+  LayoutOverrides,
   LyricLine,
   LyricPosition,
   OverlayPng,
+  StyleOverrides,
   Template,
 } from '../../shared/types';
 import type { FontKey } from '../../shared/fonts';
@@ -69,6 +71,9 @@ export function buildBatchPlan(
 
 export interface BatchInputs {
   imagePath: string;
+  /** Phase 5-6: kind of main media. Forwarded to startRender so the
+   *  ffmpeg pipeline branches on still vs animated input. */
+  mainMediaKind?: import('../../shared/types').MediaKind;
   audioPath: string;
   lyrics: LyricLine[];
   startSec: number;
@@ -89,6 +94,12 @@ export interface BatchInputs {
   exportPresetKey?: ExportPresetKey;
   /** Watermark / branding config applied to every batch item's overlays. */
   watermark?: WatermarkConfig | null;
+  /** Per-project style tweaks applied to every batch item. */
+  styleOverrides?: StyleOverrides | null;
+  /** Per-element drag positions applied to every batch item. */
+  layoutOverrides?: LayoutOverrides | null;
+  /** Optional separate background image. Applied to every batch item. */
+  backgroundImagePath?: string | null;
 }
 
 export interface BatchHooks {
@@ -155,11 +166,15 @@ export async function runBatch(
             lyricPositionOverride: inputs.lyricPositionOverride ?? null,
             fontKey: inputs.fontKey ?? null,
             watermark: inputs.watermark ?? null,
+            styleOverrides: inputs.styleOverrides ?? null,
+            layoutOverrides: inputs.layoutOverrides ?? null,
           });
 
       const presetDef = getExportPreset(inputs.exportPresetKey);
       const result = await api().startRender({
         imagePath: inputs.imagePath,
+        mainMediaKind: inputs.mainMediaKind,
+        backgroundImagePath: inputs.backgroundImagePath ?? null,
         audioPath: inputs.audioPath,
         lyrics: inputs.lyrics,
         template: tpl,
@@ -177,6 +192,8 @@ export async function runBatch(
         fxPreset: item.fxPreset,
         nameTag: `${item.id}${presetDef.filenameSuffix}`,
         exportEncode: presetDef.encode,
+        styleOverrides: inputs.styleOverrides ?? undefined,
+        layoutOverrides: inputs.layoutOverrides ?? undefined,
       });
 
       if (result.ok && result.outputPath) {

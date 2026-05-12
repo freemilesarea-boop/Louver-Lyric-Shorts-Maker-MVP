@@ -70,6 +70,11 @@ export interface CustomPreset {
   reactiveMode: ReactiveMode;
   cinematicFxPreset: FxPreset;
   language: LanguageCode | null;
+  /** Optional user style tweaks. Older presets saved before Phase 5-3
+   *  don't carry this field; readers must default to empty overrides. */
+  styleOverrides?: StyleOverrides;
+  /** Optional per-element drag positions. Phase 5-5+. */
+  layoutOverrides?: LayoutOverrides;
   createdAt: number;
   updatedAt: number;
 }
@@ -144,7 +149,148 @@ export interface Template {
   reactiveMode?: ReactiveMode;
   /** Default cinematic FX preset. User can override per-project. */
   cinematicFxPreset?: FxPreset;
+  /** Optional player-style chrome painted as part of the scene chrome
+   *  layer. When set, paints a subtle music-app-feel card with track line,
+   *  progress, controls. Self-design only — no platform logos / glyphs. */
+  playerChrome?: 'apple-like' | 'spotify-like' | 'youtube-like';
 }
+
+/** Optional visual effect added to lyric text on top of the template's
+ *  base shadow + the animation/reactive glow. Each preset is tuned so a
+ *  user can pick a vibe ("네온사인 / 부드러운 그림자") without breaking
+ *  the existing animation+reactive glow stack. */
+export type LyricEffect =
+  | 'none'
+  | 'soft_shadow'
+  | 'neon'
+  | 'glow'
+  | 'outline'
+  | 'subtle_blur_glow';
+
+export const LYRIC_EFFECTS: LyricEffect[] = [
+  'none',
+  'soft_shadow',
+  'neon',
+  'glow',
+  'outline',
+  'subtle_blur_glow',
+];
+
+export const LYRIC_EFFECT_LABEL: Record<LyricEffect, string> = {
+  none: '없음',
+  soft_shadow: '부드러운 그림자',
+  neon: '네온사인',
+  glow: '글로우',
+  outline: '외곽선',
+  subtle_blur_glow: '몽환 글로우',
+};
+
+/**
+ * User-side style overrides. All fields optional — null/undefined falls
+ * back to the template's value. Stored on the project + persisted in
+ * custom presets so a saved style ships with the user's tweaks intact.
+ *
+ * Phase 5-3 shipped the four highest-impact controls (border, lyric
+ * colors, scale). Phase 5-4 adds: lyric visual effect, lyric font
+ * scale, and a parallel set of meta (track title / artist) overrides.
+ * Adding more knobs later is purely a matter of extending this type +
+ * the editor UI; the threading code already covers the plumbing.
+ */
+export interface StyleOverrides {
+  /** Solid color for the photo card border. Falls back to template.frameColor. */
+  mainBorderColor?: string;
+  /** Override for English lyric color. Falls back to template.lyricColor. */
+  lyricPrimaryColor?: string;
+  /** Override for Korean (sub-language) lyric color. Falls back to
+   *  template.lyricSubColor. */
+  lyricSecondaryColor?: string;
+  /** Multiplicative scale on the main photo box (0.6..1.2). 1 = no change. */
+  mainScale?: number;
+  /** Visual effect added to lyric text. Layered on top of the template's
+   *  base shadow + active animation/reactive glow. */
+  lyricEffect?: LyricEffect;
+  /** Multiplicative scale on the lyric font size (0.75..1.5). 1 = no
+   *  change. Applied to both English and Korean lyric lines. */
+  lyricFontScale?: number;
+  /** Font key for track title / artist text. When unset, meta uses the
+   *  same font as lyrics. */
+  metaFontKey?: string;
+  /** Override for both track title and artist text color. */
+  metaColor?: string;
+  /** Multiplicative scale on the meta font size (0.75..1.5). 1 = no
+   *  change. Applied to both title and artist. */
+  metaFontScale?: number;
+  /** Phase 5-7 — show/hide the equalizer-style waveform regardless of
+   *  the template default. `undefined` = follow template.showWaveform. */
+  showWaveform?: boolean;
+  /** Phase 5-7 — show/hide the player chrome (Apple/Spotify/YouTube
+   *  glassy strip) AND its progress bar. `undefined` = follow the
+   *  template's playerChrome + progressBarStyle defaults. */
+  showPlayerChrome?: boolean;
+}
+
+/** Identity overrides — every field unset / passthrough. */
+export const EMPTY_STYLE_OVERRIDES: StyleOverrides = {};
+
+/**
+ * Kind of main media the user uploaded. Phase 5-6 ships image + gif;
+ * video (mp4/mov/webm/m4v) defers to Phase 5-7. The type already has a
+ * 'video' slot so the renderer can branch on it without re-typing.
+ */
+export type MediaKind = 'image' | 'gif' | 'video';
+
+/**
+ * Main media — replaces the legacy single `imagePath` field. The kind
+ * tells the renderer how to feed it into ffmpeg (still image needs
+ * `-loop 1 -framerate N`, video/gif needs `-stream_loop -1` with a
+ * trim window).
+ */
+export interface MainMedia {
+  path: string;
+  kind: MediaKind;
+  /** Source-time trim start (within the file itself, not the output
+   *  clip). Video/gif only; null for still images. */
+  sourceStartSec?: number;
+  /** Source-time trim end. Same constraints as sourceStartSec. */
+  sourceEndSec?: number;
+  /** When true (default for video/gif), the source loops to fill the
+   *  output duration if the source is shorter. When false, the last
+   *  frame freezes for the remainder. */
+  loop?: boolean;
+}
+
+/**
+ * Per-element absolute position override in canonical 1080×1920 space.
+ * Each layoutOverrides field is independently optional. When set, the
+ * scene painter uses these coordinates as the element's CENTER (or top-
+ * left for elements that anchor by top-left, documented per field).
+ *
+ * Phase 5-5 ships drag for the three highest-impact elements (lyric,
+ * meta, waveform). Player progress / controls drag is deferred to a
+ * follow-up; the type already has slots so adding them later is a
+ * matter of extending the drag overlay UI.
+ */
+export interface LayoutPoint {
+  /** 0..SCENE_W (=1080). */
+  x: number;
+  /** 0..SCENE_H (=1920). */
+  y: number;
+}
+
+export interface LayoutOverrides {
+  /** Lyric vertical anchor — overrides resolveLyricPositioning. The user
+   *  drags by the lyric's text BASELINE (paintLyric uses textBaseline
+   *  'middle'), so y is the line's vertical mid-point. */
+  lyric?: LayoutPoint;
+  /** Track-meta (title + artist) anchor — overrides paintMeta's default
+   *  centered y=H*0.78. x=center, y=title row middle. */
+  meta?: LayoutPoint;
+  /** Waveform mid-line center — overrides scene.ts paintWaveform's
+   *  default baseY=H*0.84. The bars splay symmetrically around y. */
+  waveform?: LayoutPoint;
+}
+
+export const EMPTY_LAYOUT_OVERRIDES: LayoutOverrides = {};
 
 export interface LyricLine {
   text: string;
@@ -165,7 +311,38 @@ export interface OverlayPng {
 }
 
 export interface RenderRequest {
+  /**
+   * Main media path. Required. The user's primary photo / animated gif /
+   * (Phase 5-7) video. Drawn as the centered foreground card and (when
+   * no `backgroundImagePath` is given) also as the blurred backdrop.
+   *
+   * Field name kept as `imagePath` for backwards compatibility with the
+   * existing IPC + custom presets. See `mainMediaKind` for how the
+   * pipeline should feed this to ffmpeg.
+   */
   imagePath: string;
+  /**
+   * Phase 5-6: kind of main media. When omitted the pipeline treats it
+   * as 'image' (the v1 behavior). 'gif' = use ffmpeg gif demuxer with
+   * `-stream_loop -1` so the gif loops to fill the output duration.
+   * 'video' = same loop strategy but with `-ss / -t` trimming, deferred
+   * to Phase 5-7.
+   */
+  mainMediaKind?: MediaKind;
+  /** Source-time trim start for video/gif. Ignored for images. */
+  mainMediaSourceStartSec?: number;
+  /** Source-time trim end for video/gif. Ignored for images. */
+  mainMediaSourceEndSec?: number;
+  /** Whether the source loops to fill the output duration (default true
+   *  for video/gif). */
+  mainMediaLoop?: boolean;
+  /**
+   * Optional separate background. When set, this image is the blurred
+   * cover-cropped backdrop and `imagePath` is the centered foreground.
+   * When null/undefined, the main image doubles as the background (legacy
+   * behavior).
+   */
+  backgroundImagePath?: string | null;
   audioPath: string;
   lyrics: LyricLine[];
   template: Template;
@@ -207,6 +384,13 @@ export interface RenderRequest {
     videoCrf: number;
     audioBitrateKbps: number;
   };
+  /** User's per-project visual tweaks. Applied on top of the chosen
+   *  template's defaults. Pipeline forwards to the same renderScene path
+   *  the preview uses, so the override pixels match. */
+  styleOverrides?: StyleOverrides;
+  /** Per-element absolute positions (canonical 1080×1920) for elements
+   *  the user dragged in the preview. Empty/missing → template defaults. */
+  layoutOverrides?: LayoutOverrides;
 }
 
 export interface RenderProgress {

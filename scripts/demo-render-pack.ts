@@ -48,6 +48,8 @@ import {
 import { renderScene, SCENE_W, SCENE_H } from '../src/shared/scene.ts';
 import { templates } from '../src/renderer/templates/templates.ts';
 import { FONTS } from '../src/shared/fonts.ts';
+import { buildFilterGraph } from '../src/main/render/filters.ts';
+import { progressBarGeom } from '../src/shared/playerChrome.ts';
 import type {
   AnimationPreset,
   FxPreset,
@@ -438,8 +440,21 @@ async function renderOne(combo: DemoCombo): Promise<RenderReport> {
       startSec: Math.max(0, k.startSec),
       endSec: Math.min(durationSec, k.endSec),
     }));
-    const filter = buildFilterGraphLocal({
-      W: SCENE_W, H: SCENE_H, fps: 30, durationSec, template, overlays, motionPreset: combo.motion,
+    // Phase 5-5.1: was using a stale local stub that diverged from
+    // production filters.ts. Now imports the production builder so
+    // demo renders exercise the same gates / progress / chrome /
+    // motion / size constants the real app uses.
+    const filter = buildFilterGraph({
+      width: SCENE_W,
+      height: SCENE_H,
+      fps: 30,
+      durationSec,
+      template,
+      overlays,
+      motionPreset: combo.motion,
+      backgroundInputIndex: null,
+      mainScale: 1,
+      playerProgressGeom: progressBarGeom(template.playerChrome ?? null),
     });
     const filterFile = join(tempDir, 'filter.txt');
     await fs.writeFile(filterFile, filter, 'utf8');

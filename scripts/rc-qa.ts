@@ -30,6 +30,9 @@
  *      storage module against a fake userData dir.
  *
  * Run with:  npx tsx scripts/rc-qa.ts
+ *
+ * Phase 4-7 note: this harness is the final pre-flight before the CI
+ * matrix takes over. Local Linux pass + CI cross-OS pass = RC verified.
  */
 
 import { promises as fs } from 'node:fs';
@@ -262,7 +265,19 @@ async function checkWhisperGracefulFallback(): Promise<void> {
   const { detectWhisperBinary, transcribe, WhisperNotInstalledError } = await import(
     '../src/main/audio/transcribe.ts'
   );
+  // Phase 5-8 — detectWhisperBinary now checks `process.cwd() +
+  // resources/whisper/bin/<plat>/whisper-cli` BEFORE PATH. To honestly
+  // simulate "no whisper installed anywhere", we need to chdir to a
+  // temp dir (no bundled artifacts) AND clear PATH (no system whisper).
+  // Without the chdir, this test would happily find the linux-x64
+  // binary that scripts/fetch-whisper.sh just built.
+  const { promises: fsp } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join: joinPath } = await import('node:path');
+  const isolatedCwd = await fsp.mkdtemp(joinPath(tmpdir(), 'rc-qa-whisper-iso-'));
+  const savedCwd = process.cwd();
   const savedPath = process.env.PATH;
+  process.chdir(isolatedCwd);
   process.env.PATH = '/nonexistent-rc-qa-path';
   try {
     const detected = detectWhisperBinary(true);
@@ -290,7 +305,9 @@ async function checkWhisperGracefulFallback(): Promise<void> {
       `${actualErrorName}: ${actualMessage.slice(0, 80)}`,
     );
   } finally {
+    process.chdir(savedCwd);
     process.env.PATH = savedPath;
+    await fsp.rm(isolatedCwd, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -337,82 +354,91 @@ async function checkKoreanSpacedPath(workDir: string): Promise<void> {
 
 async function checkCustomPresetRoundTrip(workDir: string): Promise<void> {
   console.log('\n=== 9. Custom preset save/load round-trip ===');
-  // The storage module imports `app` from electron and reads
-  // app.getPath('userData'). We swap that out with a fake before importing.
+
+  // The storage module reads `process.env.LSM_USER_DATA_DIR` first and
+  // falls back to `app.getPath('userData')` only if that env is unset.
+  // Setting it before the dynamic import lets us drive the round-trip
+  // entirely in-process — no spawned child, no Module._resolveFilename
+  // hack, no Windows ESM "C:\..." absolute-path import gotcha.
   const userDataDir = join(workDir, 'fake-user-data');
   await fs.mkdir(userDataDir, { recursive: true });
+  const previousEnv = process.env.LSM_USER_DATA_DIR;
+  process.env.LSM_USER_DATA_DIR = userDataDir;
+  console.log(`  userDataDir: ${userDataDir}`);
 
-  // Rather than mock electron at module level (tricky in tsx), we run the
-  // round-trip in a fresh tsx child that injects a stub electron module
-  // via a relative path.
-  const stubPath = join(workDir, 'fake-electron.mts');
-  await fs.writeFile(
-    stubPath,
-    `export const app = { getPath: (_k) => ${JSON.stringify(userDataDir)} };\n`,
-  );
-  const probePath = join(workDir, 'preset-probe.mts');
-  await fs.writeFile(
-    probePath,
-    `
-import Module from 'node:module';
-const orig = Module.createRequire(import.meta.url);
-// Patch the resolver so 'electron' in customPresets.ts maps to our stub.
-const Mod: any = Module;
-const realResolve = Mod._resolveFilename;
-Mod._resolveFilename = function (request, parent, ...rest) {
-  if (request === 'electron') return ${JSON.stringify(stubPath)};
-  return realResolve.call(this, request, parent, ...rest);
-};
-const { listPresets, savePreset, deletePreset } = await import(${JSON.stringify(
-      join(process.cwd(), 'src/main/storage/customPresets.ts'),
-    )});
+  try {
+    const { listPresets, savePreset, deletePreset } = await import(
+      '../src/main/storage/customPresets.ts'
+    );
 
-const before = await listPresets();
-const saved = await savePreset({
-  name: 'rc-qa-preset',
-  templateId: 'kballad',
-  motionPreset: 'slow_zoom_in',
-  animationPreset: 'fade',
-  reactiveMode: 'soft_pulse',
-  cinematicFxPreset: 'clean_cinematic',
-  language: 'ko',
-});
-const after = await listPresets();
-const found = after.find((p) => p.id === saved.preset?.id);
-console.log('beforeCount:', before.length);
-console.log('afterCount:', after.length);
-console.log('foundName:', found?.name);
-console.log('foundLang:', found?.language);
-console.log('foundReactive:', found?.reactiveMode);
-const delRes = await deletePreset(saved.preset.id);
-console.log('deleteOk:', delRes.ok);
-const afterDelete = await listPresets();
-console.log('afterDeleteCount:', afterDelete.length);
-`,
-  );
-  const r = spawnSync('npx', ['tsx', probePath], {
-    cwd: process.cwd(),
-    timeout: 30_000,
-    encoding: 'utf8',
-    // On Windows `npx` is `npx.cmd`; spawnSync without shell can't resolve
-    // it. shell:true is harmless on POSIX and required on win32.
-    shell: process.platform === 'win32',
-  });
-  const out = (r.stdout ?? '') + (r.stderr ?? '');
-  const get = (key: string): string =>
-    out.split('\n').find((l) => l.startsWith(`${key}:`))?.split(':').slice(1).join(':').trim() ?? '';
-  ok('save → list contains entry', get('foundName') === 'rc-qa-preset',
-    `foundName=${get('foundName')}`);
-  ok('language survives round-trip', get('foundLang') === 'ko');
-  ok('reactiveMode survives round-trip', get('foundReactive') === 'soft_pulse');
-  ok('count grew by 1',
-    parseInt(get('afterCount'), 10) === parseInt(get('beforeCount'), 10) + 1);
-  ok('delete returns ok=true', get('deleteOk') === 'true');
-  ok('count back to original after delete',
-    parseInt(get('afterDeleteCount'), 10) === parseInt(get('beforeCount'), 10));
-  if (out.includes('Error:') && !out.includes('beforeCount:')) {
-    console.log('  --- preset probe stderr ---');
-    console.log(out.slice(-1200));
+    const before = await listPresets();
+    console.log(`  beforeCount: ${before.length}`);
+
+    const saveRes = await savePreset({
+      name: 'rc-qa-preset',
+      templateId: 'kballad',
+      motionPreset: 'slow_zoom_in',
+      animationPreset: 'fade',
+      reactiveMode: 'soft_pulse',
+      cinematicFxPreset: 'clean_cinematic',
+      language: 'ko',
+    });
+    console.log(
+      `  savePreset.ok=${saveRes.ok} id=${saveRes.preset?.id ?? '?'} ` +
+        `name=${saveRes.preset?.name ?? '?'}`,
+    );
+
+    if (!saveRes.ok || !saveRes.preset) {
+      ok('save returns ok=true with preset', false,
+        `error=${saveRes.error ?? 'no-error-field'}`);
+      return;
+    }
+
+    const presetFile = join(userDataDir, 'custom-presets.json');
+    let fileBody = '';
+    try {
+      fileBody = await fs.readFile(presetFile, 'utf8');
+      console.log(`  custom-presets.json size: ${fileBody.length} bytes`);
+    } catch (e) {
+      console.log(`  custom-presets.json not readable: ${e instanceof Error ? e.message : e}`);
+    }
+
+    const after = await listPresets();
+    console.log(`  afterCount: ${after.length}`);
+    const found = after.find((p) => p.id === saveRes.preset!.id);
+    console.log(
+      `  foundName=${found?.name ?? '<<missing>>'} ` +
+        `foundLang=${found?.language ?? '<<missing>>'} ` +
+        `foundReactive=${found?.reactiveMode ?? '<<missing>>'}`,
+    );
+
+    ok('save → list contains entry', found?.name === 'rc-qa-preset',
+      `foundName=${found?.name ?? '<<missing>>'}`);
+    ok('language survives round-trip', found?.language === 'ko',
+      `foundLang=${found?.language}`);
+    ok('reactiveMode survives round-trip', found?.reactiveMode === 'soft_pulse',
+      `foundReactive=${found?.reactiveMode}`);
+    ok('count grew by 1', after.length === before.length + 1,
+      `before=${before.length} after=${after.length}`);
+
+    const delRes = await deletePreset(saveRes.preset.id);
+    console.log(`  deletePreset.ok=${delRes.ok}`);
+    ok('delete returns ok=true', delRes.ok === true);
+
+    const afterDelete = await listPresets();
+    console.log(`  afterDeleteCount: ${afterDelete.length}`);
+    ok('count back to original after delete',
+      afterDelete.length === before.length,
+      `before=${before.length} afterDelete=${afterDelete.length}`);
+
+    // Dump file contents on partial failure for diagnosis.
+    if (!allOk && fileBody) {
+      console.log('  custom-presets.json dump:');
+      console.log(fileBody.slice(0, 800));
+    }
+  } finally {
+    if (previousEnv === undefined) delete process.env.LSM_USER_DATA_DIR;
+    else process.env.LSM_USER_DATA_DIR = previousEnv;
   }
 }
 

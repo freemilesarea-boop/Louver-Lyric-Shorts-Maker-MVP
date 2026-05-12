@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ffmpegPath } from './binaries';
 import { buildFilterGraph, type OverlayTiming } from './filters';
+import { progressBarGeom } from '../../shared/playerChrome';
 import type { RenderRequest, RenderTimings } from '../../shared/types';
 
 const TARGET_W = 1080;
@@ -41,8 +42,11 @@ export async function runRender(
   }
 
   // Probe inputs.
-  await assertReadable(req.imagePath, '이미지');
+  await assertReadable(req.imagePath, '메인 사진');
   await assertReadable(req.audioPath, '오디오');
+  if (req.backgroundImagePath) {
+    await assertReadable(req.backgroundImagePath, '배경 사진');
+  }
 
   // Probe output dir is writable.
   const outDir = dirname(outputPath);
@@ -63,9 +67,17 @@ export async function runRender(
     }
     const overlayMaterializeMs = Date.now() - overlayMaterializeStart;
 
-    // 2. Build filter graph. Inputs are: 0=image, 1=audio, 2..N=overlays.
+    // 2. Build filter graph.
+    //    Input ordering:
+    //      0 = main image (looped at fps so motion can sample frames)
+    //      1 = audio (with -ss / -t for clip range)
+    //      2 = background image (when backgroundImagePath set, looped)
+    //      next..N = overlay PNGs (single-frame each)
+    //    Overlay indices shift by +1 when a background is present.
+    const hasBackground = !!req.backgroundImagePath;
+    const overlayBaseIdx = hasBackground ? 3 : 2;
     const overlayTimings: OverlayTiming[] = overlays.map((ov, i) => ({
-      inputIndex: 2 + i,
+      inputIndex: overlayBaseIdx + i,
       startSec: clamp(ov.startSec, 0, req.durationSec),
       endSec: clamp(ov.endSec, 0, req.durationSec),
     }));
@@ -78,6 +90,17 @@ export async function runRender(
       template: req.template,
       overlays: overlayTimings,
       motionPreset,
+      backgroundInputIndex: hasBackground ? 2 : null,
+      mainScale: req.styleOverrides?.mainScale ?? 1,
+      // When the template has player chrome, hand the progress-bar
+      // geometry to filters.ts so it can paint a smooth per-frame bar
+      // via drawbox + t/dur expression. No-op for templates without
+      // a player chrome.
+      playerProgressGeom: progressBarGeom(req.template.playerChrome ?? null),
+      // Phase 5-7 — user toggles for waveform / player chrome visibility
+      // and the amplitude curve that drives the equalizer bars.
+      styleOverrides: req.styleOverrides ?? null,
+      amplitudeCurve: req.amplitudeCurve ?? null,
     });
     const filterScriptPath = join(tempDir, 'filter.txt');
     await fs.writeFile(filterScriptPath, filter, 'utf8');
@@ -85,12 +108,48 @@ export async function runRender(
     // 3. Compose ffmpeg argv. Args are passed as an array (no shell), so spaces
     //    and Korean characters in paths are handled safely on Windows/macOS.
     const args: string[] = ['-y'];
-    args.push('-loop', '1', '-framerate', String(FPS), '-i', req.imagePath);
+    // Phase 5-6: main media input branches on kind.
+    //   - 'image'  → still input, `-loop 1 -framerate N` so the still
+    //                stretches to fill the output duration.
+    //   - 'gif' / 'video' → animated source. Apply optional source-time
+    //                trim (`-ss start` BEFORE `-i` for fast seek, with
+    //                `-t length` AFTER) and `-stream_loop -1` so a
+    //                source shorter than the output keeps looping. The
+    //                pipeline's final `-t req.durationSec` caps total
+    //                output length so we never run past the user's
+    //                selected clip length.
+    const mediaKind = req.mainMediaKind ?? 'image';
+    if (mediaKind === 'image') {
+      args.push('-loop', '1', '-framerate', String(FPS), '-i', req.imagePath);
+    } else {
+      // For gif/video, `-stream_loop -1` BEFORE `-i` loops the demuxed
+      // packets indefinitely. Source-time trim (sourceStartSec /
+      // sourceEndSec) optionally narrows the window the user wants
+      // from the file before looping kicks in.
+      args.push('-stream_loop', '-1');
+      if (
+        req.mainMediaSourceStartSec != null &&
+        req.mainMediaSourceStartSec > 0
+      ) {
+        args.push('-ss', String(req.mainMediaSourceStartSec));
+      }
+      if (req.mainMediaSourceEndSec != null && req.mainMediaSourceStartSec != null) {
+        const len = Math.max(
+          0.1,
+          req.mainMediaSourceEndSec - req.mainMediaSourceStartSec,
+        );
+        args.push('-t', String(len));
+      }
+      args.push('-i', req.imagePath);
+    }
     args.push(
       '-ss', String(Math.max(0, req.startSec)),
       '-t', String(req.durationSec),
       '-i', req.audioPath,
     );
+    if (req.backgroundImagePath) {
+      args.push('-loop', '1', '-framerate', String(FPS), '-i', req.backgroundImagePath);
+    }
     // Overlay PNGs are fed as single-frame inputs (no -loop). The overlay
     // filter's `enable=between(t,a,b)` gates when each is drawn; outside
     // its window it simply doesn't paint. Looping these via `-loop 1

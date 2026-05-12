@@ -3,10 +3,12 @@ import type {
   AnimationPreset,
   FxPreset,
   LanguageCode,
+  LayoutOverrides,
   LyricLine,
   LyricPosition,
   OverlayPng,
   ReactiveMode,
+  StyleOverrides,
   Template,
 } from '../../shared/types';
 import { renderScene, SCENE_W, SCENE_H, lyricWordCount } from '../../shared/scene';
@@ -49,6 +51,11 @@ interface BuildOpts {
    *  full-duration overlay PNG so the mark is visible across the whole
    *  clip — never baked into per-line keyframes (would flicker). */
   watermark?: WatermarkConfig | null;
+  /** Per-project visual tweaks. Forwarded to every PNG render so the
+   *  baked overlays match the live preview. */
+  styleOverrides?: StyleOverrides | null;
+  /** Per-element drag positions. Same forwarding rule as styleOverrides. */
+  layoutOverrides?: LayoutOverrides | null;
 }
 
 export interface SlicedLyric {
@@ -167,6 +174,16 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
           : undefined,
         lyricPositionOverride: opts.lyricPositionOverride ?? null,
         fontKey: opts.fontKey ?? null,
+        styleOverrides: opts.styleOverrides ?? null,
+        layoutOverrides: opts.layoutOverrides ?? null,
+        // Player chrome (apple/spotify/youtube-like) bakes into the per-
+        // keyframe PNG when the template requests it. Progress + time row
+        // are sampled at this keyframe's tClip — steppy at low keyframe
+        // density but acceptable for v1 of the music-app feel.
+        trackTitle: opts.trackTitle,
+        artistName: opts.artistName,
+        durationSec: opts.durationSec,
+        timeRatio: opts.durationSec > 0 ? tClip / opts.durationSec : 0,
       });
       out.push({
         base64: png,
@@ -191,6 +208,8 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       fxConfig,
       fxSeed: 0,
       fontKey: opts.fontKey ?? null,
+      styleOverrides: opts.styleOverrides ?? null,
+      layoutOverrides: opts.layoutOverrides ?? null,
     });
     out.push({ base64: png, startSec: 0, endSec: opts.durationSec });
   }
@@ -210,6 +229,7 @@ export async function buildOverlays(opts: BuildOpts): Promise<OverlayPng[]> {
       fxSeed: 0,
       fontKey: opts.fontKey ?? null,
       watermark: opts.watermark,
+      styleOverrides: opts.styleOverrides ?? null,
     });
     out.push({ base64: png, startSec: 0, endSec: opts.durationSec });
   }
@@ -232,6 +252,14 @@ interface OverlayPngOpts {
   lyricPositionOverride?: LyricPosition | null;
   fontKey?: FontKey | null;
   watermark?: WatermarkConfig | null;
+  styleOverrides?: StyleOverrides | null;
+  layoutOverrides?: LayoutOverrides | null;
+  /** Total clip duration. Forwarded to renderScene for the player chrome
+   *  time-row (only relevant when template.playerChrome is set). */
+  durationSec?: number;
+  /** 0..1 progress at this overlay's sample time. Drives the player
+   *  chrome progress bar. */
+  timeRatio?: number;
 }
 
 async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
@@ -259,6 +287,10 @@ async function renderOverlayPng(o: OverlayPngOpts): Promise<string> {
     lyricPositionOverride: o.lyricPositionOverride ?? null,
     fontKey: o.fontKey ?? null,
     watermark: o.watermark ?? null,
+    styleOverrides: o.styleOverrides ?? null,
+    layoutOverrides: o.layoutOverrides ?? null,
+    durationSec: o.durationSec,
+    timeRatio: o.timeRatio,
   });
 
   return await canvasToBase64Png(canvas);
