@@ -36,6 +36,7 @@
     "test:video-export": "tsx scripts/test-video-export.ts",
     "release-qa": "tsx scripts/release-qa.ts",
     "fetch:whisper": "bash scripts/fetch-whisper.sh",
+    "icons": "tsx scripts/build-icons.ts",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
@@ -45,6 +46,7 @@
     "ffprobe-static": "^3.1.0"
   },
   "devDependencies": {
+    "@fiahfy/icns-convert": "^0.0.12",
     "@napi-rs/canvas": "^1.0.0",
     "@types/ffprobe-static": "^2.0.3",
     "@types/node": "^20.11.30",
@@ -95,7 +97,14 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.video",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true,
+      "extendInfo": {
+        "NSHumanReadableCopyright": "© 2026 Louver",
+        "LSApplicationCategoryType": "public.app-category.video"
+      }
     },
     "win": {
       "target": "nsis",
@@ -107,7 +116,29 @@
       "icon": "build/icon.png"
     },
     "dmg": {
-      "writeUpdateInfo": true
+      "writeUpdateInfo": true,
+      "title": "Lyric Shorts Maker ${version}",
+      "icon": "build/icon.icns",
+      "window": {
+        "width": 660,
+        "height": 440
+      },
+      "contents": [
+        { "x": 160, "y": 200, "type": "file" },
+        { "x": 500, "y": 200, "type": "link", "path": "/Applications" },
+        {
+          "x": 160,
+          "y": 360,
+          "type": "file",
+          "path": "build/dmg/Unblock Lyric Shorts Maker.command"
+        },
+        {
+          "x": 500,
+          "y": 360,
+          "type": "file",
+          "path": "build/dmg/처음 실행이 안 되면 읽어주세요.txt"
+        }
+      ]
     },
     "publish": [
       {

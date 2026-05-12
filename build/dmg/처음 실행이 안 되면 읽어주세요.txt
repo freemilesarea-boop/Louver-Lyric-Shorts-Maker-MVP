@@ -1,0 +1,43 @@
+Lyric Shorts Maker — macOS 처음 실행 안내
+===========================================
+
+대부분의 경우 아래 순서로 바로 됩니다:
+
+  1) "Lyric Shorts Maker" 아이콘을 "Applications" 폴더로 드래그
+  2) Launchpad 또는 Finder → 응용 프로그램 → Lyric Shorts Maker
+     ★ 첫 실행만 우클릭 → "열기" ★
+  3) 경고 창에서 "열기" 클릭
+  4) 끝. 두 번째부터는 더블클릭으로 실행됩니다.
+
+
+만약 "손상되었기 때문에 열 수 없습니다" 라는 메시지가 뜨면
+==========================================================
+
+이 DMG 안의 "Unblock Lyric Shorts Maker.command" 파일을
+더블클릭하세요. 자동으로 문제를 해결해줍니다.
+
+(터미널이 잠깐 열렸다 닫힙니다. 정상이에요.)
+
+
+왜 이런 경고가 뜨나요?
+==========================================================
+
+Lyric Shorts Maker RC.1은 아직 Apple Developer ID 인증서가
+없는 자가 서명 빌드입니다. macOS는 인증되지 않은 앱을
+기본적으로 차단해서 사용자를 보호합니다.
+
+이 앱은 안전합니다 — 소스 코드도 GitHub에서 공개:
+https://github.com/freemilesarea-boop/Louver-Lyric-Shorts-Maker-MVP
+
+정식 V1.0.0부터는 Apple Developer ID 인증서가 적용되어
+경고 없이 바로 실행되도록 할 예정입니다.
+
+
+문제가 계속되면
+==========================================================
+
+앱이 일단 실행되면 시작 화면에서 "🛠 진단 / 업데이트" →
+"📋 오류 복사하기"를 눌러서 로그를 복사한 뒤 GitHub Issues에
+붙여넣어 주세요. 빠르게 패치해드립니다.
+
+https://github.com/freemilesarea-boop/Louver-Lyric-Shorts-Maker-MVP/issues
