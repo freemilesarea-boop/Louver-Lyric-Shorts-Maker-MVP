@@ -184,34 +184,26 @@ jobs:
         # NOT for build-time publishing. Build-time publishing is
         # handled by the dedicated `publish` job below using
         # softprops/action-gh-release which has its own auth.
+        #
+        # macOS ad-hoc signing — `mac.identity: "-"` in package.json
+        # tells electron-builder to ad-hoc sign the .app DURING this
+        # step, BEFORE packaging it into the DMG. Previously a
+        # post-build codesign step ran AFTER the DMG was already
+        # created — pointless because the .app inside the DMG never
+        # got re-signed. Sequence is now:
+        #   1. electron-vite build → out/
+        #   2. electron-builder: pack .app → ad-hoc sign .app → DMG
+        #      → upload-ready, with a signed .app INSIDE the DMG
+        # Result: macOS users see "확인되지 않은 개발자" (which has a
+        # working "그래도 열기" path in Privacy & Security) instead
+        # of "손상" (which has no recovery path without terminal).
         run: npm run ${{ matrix.dist-script }}
         env:
-          # Skip code signing in CI for now — sign + notarize is a
-          # follow-on step that needs Apple Developer ID + Authenticode
-          # certs configured as repo secrets. CI artifacts produced here
-          # are unsigned and intended for internal testing.
+          # Skip Apple Developer ID auto-discovery. Combined with
+          # `mac.identity: "-"` in package.json, electron-builder
+          # explicitly ad-hoc signs instead of trying to find a real
+          # cert and silently falling back to unsigned.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-
-      - name: Ad-hoc codesign macOS app (no Apple Developer ID required)
-        # macOS Gatekeeper rejects an unsigned .app with "손상되었기
-        # 때문에 열 수 없습니다" because the package has no signature
-        # AND the quarantine xattr is set when the user downloads it.
-        # An ad-hoc signature (`-s -`) is enough for Gatekeeper to fall
-        # through to the "unidentified developer" prompt, which the user
-        # can clear via right-click → Open. This isn't notarization —
-        # users on macOS 15+ may still need to allow the app in Settings
-        # → Privacy & Security — but it's a strict improvement over a
-        # totally unsigned .app, and it costs nothing.
-        if: matrix.os == 'macos-latest'
-        run: |
-          set -e
-          shopt -s nullglob
-          for app in release/mac*/*.app release/*.app; do
-            if [ -d "$app" ]; then
-              echo "Ad-hoc signing: $app"
-              codesign --force --deep --sign - "$app" || true
-            fi
-          done
 
       - name: Verify packaged ffmpeg/ffprobe binaries
         # Confirms the host-OS binary actually landed in the package.

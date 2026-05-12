@@ -97,6 +97,7 @@
       "target": "dmg",
       "category": "public.app-category.video",
       "icon": "build/icon.icns",
+      "identity": "-",
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "darkModeSupport": true,
