@@ -196,11 +196,12 @@ async function main(): Promise<void> {
   ]);
 
   // 4. macOS ICNS: real container format. ImageMagick on Linux
-  //    doesn't ship libicns, so we use @fiahfy/icns-convert (pure
-  //    JS, no native deps). The encoder reads multiple PNG sizes and
-  //    packs them into the .icns container with the correct OSType
-  //    tags. electron-builder requires an actual ICNS — a PNG
-  //    renamed to .icns is rejected.
+  //    doesn't ship libicns, so we use @fiahfy/icns-convert (which
+  //    transitively pulls in sharp + libvips and is NOT installed
+  //    by default — see comment below). The encoder reads multiple
+  //    PNG sizes and packs them into the .icns container with the
+  //    correct OSType tags. electron-builder requires an actual
+  //    ICNS — a PNG renamed to .icns is rejected.
   const icnsOut = join(BUILD_DIR, 'icon.icns');
   console.log(`[icons] writing ${icnsOut} (multi-size 16…1024)`);
   await buildIcns(SOURCE_PNG, icnsOut);
@@ -213,13 +214,24 @@ async function buildIcns(sourcePng: string, outPath: string): Promise<void> {
   // 1024 = retina @ 512pt, 512 = retina @ 256pt, etc.
   const sizes = [16, 32, 64, 128, 256, 512, 1024];
 
-  // @fiahfy/icns-convert is in optionalDependencies because it
-  // transitively depends on sharp@0.27.2 which fails to build on
-  // GitHub's macos-latest runner (missing system libvips). CI uses
-  // `npm ci --omit=optional` so this package may not be installed.
-  // That's fine — CI never regenerates icons; build/icon.icns is a
-  // committed static asset. We only need the package when a
-  // maintainer runs `npm run icons` locally.
+  // @fiahfy/icns-convert is intentionally NOT in package.json (not
+  // even as an optionalDependency). It transitively depends on
+  // sharp@0.27.2 which compiles against system libvips on macOS,
+  // and macos-latest GitHub runners don't ship libvips. Putting it
+  // in optionalDependencies + `npm ci --omit=optional` also breaks
+  // CI because Rollup's per-platform native binaries are themselves
+  // optionalDependencies — skipping ALL optionals kills `vite build`
+  // with "MODULE_NOT_FOUND rollup/dist/native.js".
+  //
+  // Resolution: dynamic-import on demand. Maintainers regenerating
+  // icons locally run:
+  //
+  //   npm install --no-save @fiahfy/icns-convert
+  //   npm run icons
+  //
+  // The committed build/icon.icns is a static asset used by CI
+  // verbatim. Only re-run this when the 1024×1024 source PNG
+  // changes — which is rare.
   let convertFn: ((buffers: Buffer[]) => Promise<Buffer>) | null = null;
   try {
     const mod = (await import('@fiahfy/icns-convert')) as {
@@ -228,10 +240,14 @@ async function buildIcns(sourcePng: string, outPath: string): Promise<void> {
     convertFn = mod.convert;
   } catch {
     console.error(
-      `[icons] @fiahfy/icns-convert is not installed. To regenerate ` +
-        `build/icon.icns, run:\n\n  npm install --no-save @fiahfy/icns-convert\n\n` +
-        `Then re-run npm run icons. The committed icon.icns is fine for ` +
-        `CI/distribution; only run this locally when the source PNG changes.`,
+      `[icons] @fiahfy/icns-convert is not installed.\n\n` +
+        `This is normal — the package is NOT in package.json because\n` +
+        `it pulls in sharp+libvips which breaks CI on macos-latest.\n\n` +
+        `To regenerate build/icon.icns run:\n\n` +
+        `  npm install --no-save @fiahfy/icns-convert\n` +
+        `  npm run icons\n\n` +
+        `The committed icon.icns is fine for CI/distribution; only\n` +
+        `re-run this when the source PNG changes (rare).`,
     );
     process.exit(1);
   }
