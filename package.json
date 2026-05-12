@@ -1,8 +1,14 @@
 {
   "name": "louver-lyric-shorts-maker",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
-  "description": "Generate 9:16 lyric shorts from a single image, audio file, and lyrics.",
+  "description": "Generate 9:16 lyric short videos from a single image / video / audio file with AI-extracted lyrics — no Python, no PATH config required.",
+  "author": {
+    "name": "Louver",
+    "email": "support@louver.app"
+  },
+  "license": "UNLICENSED",
+  "homepage": "https://github.com/freemilesarea-boop/Louver-Lyric-Shorts-Maker-MVP",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -28,10 +34,13 @@
     "test:media-protocol": "tsx scripts/test-media-protocol.ts",
     "test:media-probe": "tsx scripts/test-media-probe.ts",
     "test:video-export": "tsx scripts/test-video-export.ts",
+    "release-qa": "tsx scripts/release-qa.ts",
     "fetch:whisper": "bash scripts/fetch-whisper.sh",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0"
   },
@@ -68,12 +77,19 @@
       {
         "from": "assets/fonts",
         "to": "assets/fonts",
-        "filter": ["**/*.ttf", "**/*.otf", "**/*.woff2", "README.md"]
+        "filter": [
+          "**/*.ttf",
+          "**/*.otf",
+          "**/*.woff2",
+          "README.md"
+        ]
       },
       {
         "from": "resources/whisper",
         "to": "whisper",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
@@ -91,8 +107,16 @@
       "icon": "build/icon.png"
     },
     "dmg": {
-      "writeUpdateInfo": false
+      "writeUpdateInfo": true
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "freemilesarea-boop",
+        "repo": "Louver-Lyric-Shorts-Maker-MVP",
+        "releaseType": "release"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true

@@ -167,4 +167,32 @@ export interface LyricShortsAPI {
   openPath(path: string): Promise<string>;
   showItemInFolder(path: string): Promise<void>;
   openExternal(url: string): Promise<void>;
+
+  // Phase 5-11 — diagnostics
+  logPath(): Promise<string>;
+  openLogFolder(): Promise<void>;
+  copyDiagnostics(): Promise<{ ok: boolean; bytes: number }>;
+
+  // Phase 5-11 — auto-updater
+  updaterCheck(): Promise<UpdaterEventInfo>;
+  updaterQuitAndInstall(): Promise<void>;
+  onUpdaterEvent(cb: (e: UpdaterEventInfo) => void): () => void;
+}
+
+/** Mirrors src/main/autoUpdater.ts UpdaterEvent. */
+export interface UpdaterEventInfo {
+  kind:
+    | 'checking'
+    | 'update-available'
+    | 'update-not-available'
+    | 'download-progress'
+    | 'update-downloaded'
+    | 'error';
+  version?: string;
+  releaseNotes?: string | null;
+  percent?: number;
+  bytesPerSecond?: number;
+  transferred?: number;
+  total?: number;
+  error?: string;
 }

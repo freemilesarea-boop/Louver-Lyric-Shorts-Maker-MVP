@@ -1,9 +1,13 @@
-import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, net, clipboard } from 'electron';
 import { join } from 'node:path';
 import { registerFileHandlers } from './ipc/files';
 import { registerRenderHandlers } from './ipc/render';
 import { mediaUrlToFileUrl } from './ipc/mediaUrl';
 import { detectWhisperSelfCheck } from './audio/transcribe';
+import { configureLogging, logDir, mainLogPath, readLogTail } from './logging';
+import { manualCheckForUpdates, quitAndInstall, startAutoUpdater } from './autoUpdater';
+
+configureLogging();
 
 const isDev = !app.isPackaged;
 
@@ -137,7 +141,43 @@ app.whenReady().then(() => {
     shell.showItemInFolder(p);
   });
 
+  // Phase 5-11 — diagnostics IPC. The renderer's "오류 복사하기"
+  // button copies a 200KB log tail to the clipboard so users can
+  // paste it into a bug report without having to find the log file.
+  // "로그 폴더 열기" pops the platform file manager at the directory.
+  ipcMain.handle('app:logPath', () => mainLogPath());
+  ipcMain.handle('app:openLogFolder', async () => {
+    await shell.openPath(logDir());
+  });
+  ipcMain.handle('app:copyDiagnostics', async () => {
+    const tail = await readLogTail();
+    const header =
+      `=== Lyric Shorts Maker diagnostics ===\n` +
+      `app:        ${app.getName()} v${app.getVersion()}\n` +
+      `platform:   ${process.platform} ${process.arch}\n` +
+      `electron:   ${process.versions.electron}\n` +
+      `node:       ${process.versions.node}\n` +
+      `packaged:   ${app.isPackaged}\n` +
+      `logPath:    ${mainLogPath()}\n` +
+      `========================================\n`;
+    clipboard.writeText(header + tail);
+    return { ok: true, bytes: tail.length };
+  });
+
+  // Phase 5-11 — auto-updater IPCs. The startAutoUpdater() call below
+  // wires the event stream; these handlers cover renderer-triggered
+  // manual checks + the "재시작해서 설치" confirmation.
+  ipcMain.handle('updater:check', () => manualCheckForUpdates());
+  ipcMain.handle('updater:quitAndInstall', () => {
+    quitAndInstall();
+  });
+
   createWindow();
+
+  // Phase 5-11 — kick off the auto-update check ~5s after launch.
+  // No-ops in dev / when LSM_DISABLE_UPDATER=1 / when build.publish
+  // isn't configured.
+  startAutoUpdater(() => mainWindow);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

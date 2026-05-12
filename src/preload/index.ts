@@ -45,6 +45,22 @@ const api: LyricShortsAPI = {
   openPath: (path: string) => ipcRenderer.invoke('app:openPath', path),
   showItemInFolder: (path: string) => ipcRenderer.invoke('app:showItemInFolder', path),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+
+  // Phase 5-11 — diagnostics
+  logPath: () => ipcRenderer.invoke('app:logPath'),
+  openLogFolder: () => ipcRenderer.invoke('app:openLogFolder'),
+  copyDiagnostics: () => ipcRenderer.invoke('app:copyDiagnostics'),
+
+  // Phase 5-11 — auto-updater
+  updaterCheck: () => ipcRenderer.invoke('updater:check'),
+  updaterQuitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
+  onUpdaterEvent: (cb) => {
+    const listener = (_e: unknown, p: unknown) => cb(p as Parameters<typeof cb>[0]);
+    ipcRenderer.on('updater:event', listener);
+    return () => {
+      ipcRenderer.removeListener('updater:event', listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('lyric', api);

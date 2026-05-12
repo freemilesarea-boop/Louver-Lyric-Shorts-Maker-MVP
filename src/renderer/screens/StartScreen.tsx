@@ -2,6 +2,7 @@ import { useProjectStore } from '../store/projectStore';
 import { api } from '../lib/api';
 import { useState } from 'react';
 import HelpPanel from '../components/HelpPanel';
+import DiagnosticsPanel from '../components/DiagnosticsPanel';
 import MediaValidationBanner from '../components/MediaValidationBanner';
 import type { MediaKind } from '../../shared/types';
 
@@ -113,8 +114,9 @@ export default function StartScreen(): JSX.Element {
           배경 사진을 따로 고를 수도 있어요 (선택사항).
         </p>
 
-        <div className="mt-5">
+        <div className="mt-5 space-y-3">
           <HelpPanel />
+          <DiagnosticsPanel />
         </div>
 
         <div className="mt-6 grid grid-cols-3 gap-4">
