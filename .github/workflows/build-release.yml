@@ -115,16 +115,22 @@ jobs:
         # only hard-fails on tag builds. The user explicitly authorized
         # this split: "PR smoke CI에서는 whisper fetch를 best-effort로
         # 유지하되 release build에서는 필수."
+        #
+        # Phase 5-12 — main pushes ALSO require whisper now that the
+        # publish job below uploads the artifacts to a GitHub Release
+        # for end-user download. A "no AI engine" Release would be
+        # worse than no Release. Tag pushes still required as before.
         id: fetch_whisper
         shell: bash
-        continue-on-error: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: scripts/fetch-whisper.sh
 
       - name: Confirm bundled whisper landed in tree
-        # Required on tag pushes (release), best-effort on PR/main. We
-        # always log the outcome so the artifact's whisper status is
-        # discoverable from the run summary.
-        if: ${{ startsWith(github.ref, 'refs/tags/') || steps.fetch_whisper.outcome == 'success' }}
+        # Required on tag pushes (release) + main pushes (Phase 5-12
+        # publish job below), best-effort on PR. We always log the
+        # outcome so the artifact's whisper status is discoverable
+        # from the run summary.
+        if: ${{ github.event_name != 'pull_request' || steps.fetch_whisper.outcome == 'success' }}
         shell: bash
         run: |
           set -e
@@ -142,11 +148,11 @@ jobs:
             || missing="$missing resources/whisper/models/ggml-base.bin"
           if [ -n "$missing" ]; then
             echo "whisper-status: missing$missing"
-            if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
-              echo "whisper-status: tag build requires bundled whisper — failing."
+            if [ "${{ github.event_name }}" != "pull_request" ]; then
+              echo "whisper-status: release-bound build requires bundled whisper — failing."
               exit 1
             else
-              echo "whisper-status: PR/main build — continuing without bundled whisper."
+              echo "whisper-status: PR build — continuing without bundled whisper."
               echo "  (TranscribeButton will surface the friendly fallback.)"
             fi
           else
@@ -212,3 +218,111 @@ jobs:
           path: ${{ matrix.artifact-glob }}
           if-no-files-found: warn
           retention-days: 14
+
+  # Phase 5-12 — auto-publish a GitHub Release with the .exe / .dmg /
+  # AppImage attached so end users download directly from
+  # /releases/latest instead of digging through Actions → run →
+  # Artifacts (which requires GitHub auth + 14-day retention).
+  #
+  # Triggers on: push to main, or push of any v* tag. NEVER on PR
+  # (would clutter the Releases page).
+  #
+  # Tag scheme: reads version from package.json (e.g. "1.0.0-rc.1")
+  # and creates tag "v1.0.0-rc.1". The action upserts — if the tag
+  # already exists (e.g. user manually tagged earlier), it updates
+  # the existing Release in place with the freshly-built artifacts.
+  #
+  # Prerelease auto-detection: any version containing -rc / -beta /
+  # -alpha is marked as a GitHub pre-release so the auto-updater
+  # (electron-updater, releaseType=release in package.json) doesn't
+  # auto-deliver to stable users. Bump package.json to "1.0.0"
+  # (no suffix) when cutting the actual stable release.
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      # softprops/action-gh-release needs contents:write to create/
+      # update Releases AND to create the underlying git tag. Default
+      # GITHUB_TOKEN may be read-only depending on repo settings —
+      # if this job fails with 403, enable Settings → Actions →
+      # General → Workflow permissions → Read and write permissions.
+      contents: write
+    steps:
+      - name: Checkout (need package.json for the version)
+        uses: actions/checkout@v4
+
+      - name: Download all matrix artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: List downloaded assets (debug)
+        run: |
+          echo "=== release-assets tree ==="
+          find release-assets -type f -printf "%s\t%p\n" | sort -k2
+
+      - name: Read package.json version
+        id: pkg
+        run: |
+          ver=$(node -p "require('./package.json').version")
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          case "$ver" in
+            *-rc*|*-beta*|*-alpha*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "Version detected: $ver"
+
+      - name: Create / update GitHub Release with installers attached
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.pkg.outputs.version }}
+          name: Lyric Shorts Maker v${{ steps.pkg.outputs.version }}
+          prerelease: ${{ steps.pkg.outputs.prerelease }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            release-assets/dist-win/**/*
+            release-assets/dist-mac/**/*
+            release-assets/dist-linux/**/*
+          body: |
+            ## 다운로드 (Install)
+
+            바로 받아서 설치하시면 됩니다 — Python / Whisper / ffmpeg
+            별도 설치 필요 없음, 관리자 권한 필요 없음.
+
+            - **Windows**: 아래 `.exe` 다운로드 → 설치 마법사 → 시작 메뉴에서 실행
+            - **macOS**: 아래 `.dmg` 다운로드 → Applications로 드래그 → 첫 실행만 우클릭 → "열기"
+            - **Linux**: 아래 `.AppImage` 다운로드 → `chmod +x` → 실행
+
+            ## 첫 실행 시 주의
+
+            - **Windows SmartScreen** 경고가 뜸 → "추가 정보" → "실행"
+              (rc 단계라 EV 인증서가 아직 없습니다. 정식 V1.0.0 때 추가 예정.)
+            - **macOS Gatekeeper**가 "개발자 확인 안 됨" 표시 → 우클릭 → "열기"
+              한 번만 하시면 다음부턴 더블클릭으로 실행됨.
+
+            ## 번들된 것 (별도 설치 0개)
+
+            - **ffmpeg / ffprobe** — 영상 인코딩 + 메타 추출 (OS별 정적 바이너리)
+            - **whisper.cpp + ggml-base 모델** (~150 MB) — AI 한국어/영어 가사 자동 인식
+            - **번들 폰트** — Pretendard / Inter / Noto Sans KR
+
+            ## 문제 발생 시
+
+            앱 시작 화면 → **🛠 진단 / 업데이트** 펼치기 → **📋 오류 복사하기**
+            클릭 → 그 텍스트를 그대로 이슈에 붙여넣어 주세요. 로그에 정확한
+            실패 원인이 찍혀 있어서 바로 패치 가능합니다.
+
+            ## V1.0.0-rc.1 주요 변경
+
+            - electron-log 기반 진단/로깅 시스템 (시작 화면 진단 패널)
+            - electron-updater 자동 업데이트 스캐폴드 (정식 Release부터 활성화)
+            - 14단계 release-qa 게이팅 하네스
+            - Whisper 무음 구간 자동 감지 + 친절한 안내 메시지
+            - 진행률 바 deterministic 테스트
+            - Windows 크로스빌드 풋건 방지 (verify-packaged-binaries 타깃 인식)
+
+            전체 커밋 목록: PR
+            [#1](https://github.com/freemilesarea-boop/Louver-Lyric-Shorts-Maker-MVP/pull/1)
