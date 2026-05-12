@@ -24,3 +24,8 @@ resources/whisper/bin/*/whisper-cli
 resources/whisper/bin/*/whisper-cli.exe
 resources/whisper/bin/*/*.dll
 resources/whisper/models/ggml-*.bin
+
+# Phase 5-13 — scripts/build-icons.ts scratch dir (per-size PNGs
+# used as input to the ICNS encoder). The final build/icon.icns is
+# committed; the intermediate dir isn't.
+build/.icns-tmp/

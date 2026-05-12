@@ -5,6 +5,7 @@ import { loadBundledFontsIntoDocument } from './lib/fontLoader';
 import StartScreen from './screens/StartScreen';
 import EditorScreen from './screens/EditorScreen';
 import ExportScreen from './screens/ExportScreen';
+import FirstLaunchMacHelper from './components/FirstLaunchMacHelper';
 
 export default function App(): JSX.Element {
   const screen = useProjectStore((s) => s.screen);
@@ -53,6 +54,7 @@ export default function App(): JSX.Element {
         {screen === 'export' && <ExportScreen />}
       </main>
       <LouverAppBrand />
+      <FirstLaunchMacHelper />
     </div>
   );
 }
