@@ -105,32 +105,26 @@ jobs:
         # (~3 min on a CI runner; -DBUILD_SHARED_LIBS=OFF produces a
         # standalone binary that doesn't need sidecar .so/.dylib files).
         #
-        # Phase 5-8.1 policy split:
-        #   * Tag pushes (v*) MUST ship whisper — a failed fetch fails
-        #     the build so we never publish a "no AI engine" release.
-        #   * PR + main pushes treat the fetch as best-effort. A
+        # Policy split (Phase 5-12.1 — reverted from 5-12 after we
+        # made the publish job tag-only):
+        #   * Tag pushes (v*) MUST ship whisper — the Release that
+        #     gets auto-published would otherwise be a "no AI engine"
+        #     build, worse than no Release.
+        #   * Main / PR pushes treat the fetch as best-effort. A
         #     transient HF outage or whisper.cpp release page hiccup
         #     shouldn't block validation of the rest of the app.
-        # The `Confirm` step downstream uses the same gating so it
-        # only hard-fails on tag builds. The user explicitly authorized
-        # this split: "PR smoke CI에서는 whisper fetch를 best-effort로
-        # 유지하되 release build에서는 필수."
-        #
-        # Phase 5-12 — main pushes ALSO require whisper now that the
-        # publish job below uploads the artifacts to a GitHub Release
-        # for end-user download. A "no AI engine" Release would be
-        # worse than no Release. Tag pushes still required as before.
+        #     Main pushes only produce Actions artifacts now (used
+        #     for internal smoke testing), not user-facing Releases.
         id: fetch_whisper
         shell: bash
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        continue-on-error: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: scripts/fetch-whisper.sh
 
       - name: Confirm bundled whisper landed in tree
-        # Required on tag pushes (release) + main pushes (Phase 5-12
-        # publish job below), best-effort on PR. We always log the
-        # outcome so the artifact's whisper status is discoverable
-        # from the run summary.
-        if: ${{ github.event_name != 'pull_request' || steps.fetch_whisper.outcome == 'success' }}
+        # Required on tag pushes (release), best-effort on main / PR.
+        # We always log the outcome so the artifact's whisper status
+        # is discoverable from the run summary.
+        if: ${{ startsWith(github.ref, 'refs/tags/') || steps.fetch_whisper.outcome == 'success' }}
         shell: bash
         run: |
           set -e
@@ -148,11 +142,11 @@ jobs:
             || missing="$missing resources/whisper/models/ggml-base.bin"
           if [ -n "$missing" ]; then
             echo "whisper-status: missing$missing"
-            if [ "${{ github.event_name }}" != "pull_request" ]; then
-              echo "whisper-status: release-bound build requires bundled whisper — failing."
+            if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
+              echo "whisper-status: tag build requires bundled whisper — failing."
               exit 1
             else
-              echo "whisper-status: PR build — continuing without bundled whisper."
+              echo "whisper-status: non-tag build — continuing without bundled whisper."
               echo "  (TranscribeButton will surface the friendly fallback.)"
             fi
           else
@@ -172,6 +166,14 @@ jobs:
           fi
 
       - name: Build dist installer
+        # `--publish never` is passed by each dist:* npm script (see
+        # package.json). Without it electron-builder would try to push
+        # to GitHub Releases at build time and fail with
+        # "GH_TOKEN not set" — the publish config in package.json is
+        # only needed at RUNTIME for electron-updater's feed lookup,
+        # NOT for build-time publishing. Build-time publishing is
+        # handled by the dedicated `publish` job below using
+        # softprops/action-gh-release which has its own auth.
         run: npm run ${{ matrix.dist-script }}
         env:
           # Skip code signing in CI for now — sign + notarize is a
@@ -224,13 +226,18 @@ jobs:
   # /releases/latest instead of digging through Actions → run →
   # Artifacts (which requires GitHub auth + 14-day retention).
   #
-  # Triggers on: push to main, or push of any v* tag. NEVER on PR
-  # (would clutter the Releases page).
+  # Phase 5-12.1 — restricted to v* TAG pushes only. Main pushes
+  # produce Actions artifacts (for internal smoke testing) but do
+  # NOT auto-create a Release — to cut a Release the maintainer
+  # bumps package.json version and pushes a v<version> tag (or
+  # creates the tag via the GitHub Releases UI which also triggers
+  # this workflow). Keeps the Releases page clean and prevents
+  # accidental Releases on every main merge during active development.
   #
   # Tag scheme: reads version from package.json (e.g. "1.0.0-rc.1")
-  # and creates tag "v1.0.0-rc.1". The action upserts — if the tag
-  # already exists (e.g. user manually tagged earlier), it updates
-  # the existing Release in place with the freshly-built artifacts.
+  # and creates / updates tag "v<version>". The action upserts —
+  # if the tag already exists, it updates the existing Release in
+  # place with the freshly-built artifacts.
   #
   # Prerelease auto-detection: any version containing -rc / -beta /
   # -alpha is marked as a GitHub pre-release so the auto-updater
@@ -240,7 +247,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       # softprops/action-gh-release needs contents:write to create/
