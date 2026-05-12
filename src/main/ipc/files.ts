@@ -277,6 +277,10 @@ export function registerFileHandlers(
       language?: string;
       error?: string;
       notInstalled?: boolean;
+      /** Phase 5-11 — surfaced so the renderer can render a precise
+       *  "오디오가 너무 조용해요" hint when whisper returns zero
+       *  segments AND the loudness probe says the clip was silent. */
+      loudness?: { meanDb: number; maxDb: number; tooQuiet: boolean };
     }> => {
       try {
         const result = await transcribe(args);
@@ -284,16 +288,25 @@ export function registerFileHandlers(
           ok: true,
           lines: result.lines.map((l) => ({ text: l.text, start: l.start, end: l.end })),
           language: result.language,
+          loudness: result.loudness,
         };
       } catch (err) {
         if (err instanceof WhisperNotInstalledError) {
+          // Phase 5-11 stabilization: bundled-only architecture as of
+          // Phase 5-10 — Python/pip install instructions are stale.
+          // Surface the precise reason from the self-check (e.g.
+          // "whisper-cli.exe is missing", "model file too small",
+          // "Windows MOTW blocked the .exe") so the user can act,
+          // and append a fallback "재설치하거나 …" line for the
+          // case where reason is empty.
+          const detail = err.selfCheck?.reason ?? err.message;
           return {
             ok: false,
             notInstalled: true,
             error:
-              'Whisper가 설치되어 있지 않습니다. 자동 가사 추출을 사용하려면 ' +
-              'OpenAI Whisper(`pip install openai-whisper`) 또는 whisper.cpp를 ' +
-              '시스템에 설치한 뒤 다시 시도해주세요.',
+              `내장 AI 음성인식 엔진을 사용할 수 없어요.\n${detail}\n` +
+              `해결 방법: 앱을 재설치하거나 (Windows의 경우) 설치 폴더의 ` +
+              `whisper 폴더 전체를 마우스 우클릭 → 속성 → 차단 해제 후 다시 시도해주세요.`,
           };
         }
         return { ok: false, error: prettyErrorMessage(err) };

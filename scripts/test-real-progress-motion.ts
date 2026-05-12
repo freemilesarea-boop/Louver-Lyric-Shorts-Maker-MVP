@@ -45,7 +45,11 @@ interface MotionResult {
   range: number;
 }
 
-function sampleProgressFillX(png: string, y: number): number {
+function sampleProgressFillX(
+  png: string,
+  y: number,
+  xRange: { start: number; end: number },
+): number {
   const ppm = png + '.row.ppm';
   const r = spawnSync(
     ffmpegPath!,
@@ -67,10 +71,18 @@ function sampleProgressFillX(png: string, y: number): number {
   const [w] = dims.split(/\s+/).map(Number);
   readLine();
   const px = buf.subarray(pos);
-  // Walk right→left, return the rightmost x where the pixel is clearly
-  // a "filled progress" — tuned to catch both colored accents (apple/
-  // youtube/spotify) and high-alpha greyscale fills (minimal/dark/etc.).
-  for (let x = w - 1; x >= 0; x--) {
+  // Phase 5-11 stabilization fix: constrain the search to the bar's
+  // actual horizontal extent. Before this, the loop walked the whole
+  // 1080-pixel frame width and could lock onto BACKGROUND pixels
+  // outside the bar (e.g. on the dark-blue test gradient at x>=974
+  // the pixels read lum=20/sat=17 which accidentally trips the
+  // "dark fill on light bg" branch). Result was a fake fillX = right
+  // edge of frame at every t. With xRange clamped to (g.x, g.x+g.w)
+  // we only consider pixels that actually belong to the progress
+  // bar.
+  const xStart = Math.max(0, Math.min(w - 1, xRange.start));
+  const xEnd = Math.max(0, Math.min(w - 1, xRange.end));
+  for (let x = xEnd; x >= xStart; x--) {
     const r1 = px[x * 3];
     const g1 = px[x * 3 + 1];
     const b1 = px[x * 3 + 2];
@@ -91,26 +103,58 @@ function sampleProgressFillX(png: string, y: number): number {
 
 async function main(): Promise<void> {
   const work = await fs.mkdtemp(join(tmpdir(), 'real-progress-'));
-  const imagePath = join(work, 'bg.png');
+  const darkBg = join(work, 'bg-dark.png');
+  const lightBg = join(work, 'bg-light.png');
   const audioPath = join(work, 'audio.wav');
+  // Phase 5-11 stabilization: render TWO photo backgrounds and pick
+  // the one that contrasts with each template's progress fill color.
+  // Without this, minimal-white (lyricColor=#111111 dark fill) is
+  // invisible on the dark-blue gradient — the detector then locks on
+  // to the *track* (also dark, same color family) which is full-width
+  // at every t, producing range=0 even though the production fill is
+  // actually advancing correctly. The two-bg fix is realistic anyway
+  // since users always pick a photo that contrasts with the template
+  // they chose (otherwise the lyrics themselves would be invisible).
   await lavfi(
     'gradients=size=1080x1920:c0=0x101030:c1=0x303060:duration=1',
-    imagePath,
+    darkBg,
+    true,
+  );
+  await lavfi(
+    'gradients=size=1080x1920:c0=0xf2f2f2:c1=0xd0d0d0:duration=1',
+    lightBg,
     true,
   );
   await lavfi(`sine=frequency=220:duration=${DURATION}`, audioPath, false);
 
   // One template per "progress class": player-chrome + non-player.
-  const probes: Array<{ template: Template; y: number; label: string }> = [
+  // `bg` selects the contrast-appropriate photo for the template's
+  // lyricColor / accent so the detector can actually see the fill.
+  // `xRange` constrains the row-walk to the bar's actual horizontal
+  // extent so we don't lock onto background pixels (see comment in
+  // sampleProgressFillX above).
+  const probes: Array<{
+    template: Template;
+    y: number;
+    label: string;
+    bg: string;
+    xRange: { start: number; end: number };
+  }> = [
     {
       template: templates.find((t) => t.id === 'apple-music-inspired')!,
       y: 1786, // y from progressBarGeom('apple-like') + 2 (mid of h=4 bar)
       label: 'apple (chrome §6.5)',
+      bg: darkBg, // apple uses red accent — visible on any bg
+      // apple chrome: cardX=80, cardW=920, g.x=cardX+28=108, g.w=cardW-56=864
+      xRange: { start: 108, end: 108 + 864 - 1 },
     },
     {
       template: templates.find((t) => t.id === 'minimal-white')!,
       y: 1693, // y=1690 + 3 (mid of h=6 bar)
       label: 'minimal-white (default §5)',
+      bg: lightBg, // minimal-white draws DARK fill — needs light photo
+      // default §5: margin=80, fullW=920 → bar spans x=80 to x=1000
+      xRange: { start: 80, end: 80 + 920 - 1 },
     },
   ];
 
@@ -120,7 +164,7 @@ async function main(): Promise<void> {
   for (const p of probes) {
     const out = join(work, `${p.template.id}.mp4`);
     const req: RenderRequest = {
-      imagePath,
+      imagePath: p.bg,
       audioPath,
       lyrics: [],
       template: p.template,
@@ -145,7 +189,7 @@ async function main(): Promise<void> {
         ['-y', '-loglevel', 'error', '-ss', String(ts), '-i', out, '-frames:v', '1', frame],
         { stdio: ['ignore', 'ignore', 'pipe'] },
       );
-      fills.push(sampleProgressFillX(frame, p.y));
+      fills.push(sampleProgressFillX(frame, p.y, p.xRange));
     }
     const range = Math.max(...fills) - Math.min(...fills);
     const monotonic = fills.every((f, i) => (i === 0 ? true : f >= fills[i - 1] - 30));

@@ -55,15 +55,17 @@ const STEPS: Step[] = [
   { name: 'test:export-presets', script: 'test:export-presets', timeoutMs: 300_000, retries: 1 },
   { name: 'test:rc-qa',          script: 'test:rc-qa',          timeoutMs: 300_000 },
   { name: 'test:template-cover', script: 'test:template-cover', timeoutMs: 180_000 },
-  // Phase 5-11 — progress-motion is known to flake under load. It
-  // produces a stuck full-width progress bar on minimal-white when
-  // run after other ffmpeg-heavy tests in the same release-qa
-  // session, while passing on an isolated `npm run test:progress-
-  // motion`. Pre-existing at HEAD d9d037b (confirmed via git stash
-  // bisect). Marked advisory so it surfaces in the summary without
-  // gating the release; a fix to the underlying flake is tracked
-  // outside this commit.
-  { name: 'test:progress-motion',script: 'test:progress-motion',timeoutMs: 300_000, retries: 1, advisory: true },
+  // Phase 5-11 stabilization — fixed deterministically in this
+  // commit. The earlier "flake" was actually two real bugs in the
+  // TEST harness: (1) the detector walked the whole 1080-px frame
+  // width and locked onto dark-bg pixels OUTSIDE the bar that
+  // accidentally matched the "dark fill on light bg" rule, and (2)
+  // the same dark-blue test photo was used for every template,
+  // making minimal-white's dark fill invisible against the bg. Fix:
+  // clamp the search to the bar's xRange + use a contrast-matched
+  // photo per template. The production render code was always
+  // correct. Demoted from advisory back to gating.
+  { name: 'test:progress-motion',script: 'test:progress-motion',timeoutMs: 300_000, retries: 1 },
   { name: 'test:media-protocol', script: 'test:media-protocol', timeoutMs: 60_000 },
   { name: 'test:media-probe',    script: 'test:media-probe',    timeoutMs: 240_000 },
   { name: 'test:media-loading',  script: 'test:media-loading',  timeoutMs: 60_000 },

@@ -98,6 +98,18 @@ export interface TranscribeOk {
   lines: TranscribedLine[];
   rawText: string;
   language: string;
+  /** Phase 5-11 — loudness probe on the sliced WAV before whisper
+   *  runs. Lets the renderer show a precise "오디오가 너무 조용해서
+   *  가사를 인식할 수 없어요" message instead of the generic "failed
+   *  to recognize" when the user picked a silent intro or a clip
+   *  where the vocals are buried under instruments. */
+  loudness?: {
+    meanDb: number;
+    maxDb: number;
+    /** True when meanDb < -45 (essentially silent — whisper cannot
+     *  reliably hear anything). */
+    tooQuiet: boolean;
+  };
 }
 
 export class WhisperNotInstalledError extends Error {
@@ -454,6 +466,20 @@ export async function transcribe(req: TranscribeRequest): Promise<TranscribeOk> 
       'expectedSec=', req.durationSec,
     );
 
+    // Phase 5-11 — loudness probe. Runs a quick volumedetect pass
+    // BEFORE whisper so we can attribute "no segments recognized"
+    // to the right cause: a near-silent clip (intro / outro / wrong
+    // range) vs. a noisy clip whisper just can't transcribe. Adds
+    // ~150ms; ffmpeg is already warm. Failures fall through.
+    const loudness = await probeLoudness(wavPath);
+    // eslint-disable-next-line no-console
+    console.log(
+      '[whisper:loudness]',
+      'meanDb=', loudness?.meanDb?.toFixed(1) ?? '(probe-failed)',
+      'maxDb=', loudness?.maxDb?.toFixed(1) ?? '(probe-failed)',
+      'tooQuiet=', loudness?.tooQuiet ?? false,
+    );
+
     // Optionally export the slice wav so the user can play it back to
     // verify the audio Whisper actually heard. Controlled by env var
     // to keep production runs from littering temp.
@@ -469,10 +495,14 @@ export async function transcribe(req: TranscribeRequest): Promise<TranscribeOk> 
     }
 
     // 2. Run whisper. Output to a JSON file so we can parse cleanly.
-    if (bin.kind === 'python-whisper') {
-      return await runPythonWhisper(bin.bin, wavPath, tempDir, req.languageHint);
-    }
-    return await runWhisperCpp(bin.bin, wavPath, tempDir, req.languageHint);
+    const inner =
+      bin.kind === 'python-whisper'
+        ? await runPythonWhisper(bin.bin, wavPath, tempDir, req.languageHint)
+        : await runWhisperCpp(bin.bin, wavPath, tempDir, req.languageHint);
+    // Phase 5-11 — attach the loudness probe so the renderer can
+    // distinguish "no segments because clip is silent" from "no
+    // segments because whisper failed."
+    return loudness ? { ...inner, loudness } : inner;
   } finally {
     fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -671,6 +701,48 @@ async function runWhisperCpp(
     rawText,
     language: parsed.result?.language ?? 'unknown',
   };
+}
+
+/**
+ * Phase 5-11 — run `ffmpeg -af volumedetect` on the sliced WAV and
+ * parse the `mean_volume:` / `max_volume:` dB lines from stderr.
+ *
+ * Returns `null` if the probe fails for any reason (ffmpeg missing,
+ * parse error, etc.) — silent-audio detection is best-effort and
+ * must never block the whisper run.
+ *
+ * `tooQuiet` threshold (-45 dB mean) chosen by inspection of real
+ * silent intros vs. real-music clips: 5s of pure ambient room noise
+ * registers ~-55 to -60 dB, a quiet acoustic intro ~-30, normal
+ * pop vocal mix ~-15 to -20. -45 cleanly separates "actually
+ * silent" from "vocals present but quiet."
+ */
+async function probeLoudness(
+  wavPath: string,
+): Promise<TranscribeOk['loudness'] | null> {
+  if (!ffmpegPath) return null;
+  return new Promise((resolve) => {
+    const child = spawn(
+      ffmpegPath!,
+      ['-v', 'info', '-i', wavPath, '-af', 'volumedetect', '-f', 'null', '-'],
+      { windowsHide: true },
+    );
+    let stderr = '';
+    child.stderr?.on('data', (b: Buffer) => {
+      stderr += b.toString();
+      if (stderr.length > 32000) stderr = stderr.slice(-32000);
+    });
+    child.on('error', () => resolve(null));
+    child.on('close', () => {
+      const meanMatch = stderr.match(/mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/);
+      const maxMatch = stderr.match(/max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/);
+      if (!meanMatch || !maxMatch) return resolve(null);
+      const meanDb = parseFloat(meanMatch[1]);
+      const maxDb = parseFloat(maxMatch[1]);
+      if (!Number.isFinite(meanDb) || !Number.isFinite(maxDb)) return resolve(null);
+      resolve({ meanDb, maxDb, tooQuiet: meanDb < -45 });
+    });
+  });
 }
 
 function runChild(bin: string, args: string[]): Promise<void> {

@@ -74,7 +74,18 @@ export default function TranscribeButton(): JSX.Element {
       }
       const lines = result.lines ?? [];
       if (lines.length === 0) {
-        setError('가사를 인식하지 못했습니다. 다른 구간을 시도해주세요.');
+        // Phase 5-11 — when the loudness probe says the slice was
+        // essentially silent (meanDb < -45), tell the user that
+        // directly instead of the generic "다른 구간을 시도해주세요"
+        // — they need to extend the audio range, not change pitch.
+        const tooQuiet = result.loudness?.tooQuiet;
+        const meanDb = result.loudness?.meanDb;
+        setError(
+          tooQuiet
+            ? `오디오가 너무 조용해요 (평균 ${meanDb?.toFixed(1)} dB). ` +
+              `시작 시간을 늦추거나 보컬이 들어오는 구간으로 옮긴 뒤 다시 시도해주세요.`
+            : '가사를 인식하지 못했습니다. 다른 구간을 시도해주세요.',
+        );
         setStatus(null);
         return;
       }

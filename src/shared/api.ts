@@ -49,6 +49,10 @@ export interface TranscribeReply {
   language?: string;
   error?: string;
   notInstalled?: boolean;
+  /** Phase 5-11 — loudness probe on the sliced clip. Renderer uses
+   *  `tooQuiet=true` + empty lines to show "오디오가 너무 조용해요"
+   *  instead of the generic "가사를 인식하지 못했어요". */
+  loudness?: { meanDb: number; maxDb: number; tooQuiet: boolean };
 }
 
 /** Phase 5-8.1 — shape mirrors src/main/ipc/mediaProbe.ts MediaProbe. */
