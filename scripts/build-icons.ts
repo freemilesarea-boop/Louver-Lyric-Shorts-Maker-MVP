@@ -212,6 +212,30 @@ async function buildIcns(sourcePng: string, outPath: string): Promise<void> {
   // electron-icon-builder / icns spec want these sizes baked in.
   // 1024 = retina @ 512pt, 512 = retina @ 256pt, etc.
   const sizes = [16, 32, 64, 128, 256, 512, 1024];
+
+  // @fiahfy/icns-convert is in optionalDependencies because it
+  // transitively depends on sharp@0.27.2 which fails to build on
+  // GitHub's macos-latest runner (missing system libvips). CI uses
+  // `npm ci --omit=optional` so this package may not be installed.
+  // That's fine — CI never regenerates icons; build/icon.icns is a
+  // committed static asset. We only need the package when a
+  // maintainer runs `npm run icons` locally.
+  let convertFn: ((buffers: Buffer[]) => Promise<Buffer>) | null = null;
+  try {
+    const mod = (await import('@fiahfy/icns-convert')) as {
+      convert: (buffers: Buffer[]) => Promise<Buffer>;
+    };
+    convertFn = mod.convert;
+  } catch {
+    console.error(
+      `[icons] @fiahfy/icns-convert is not installed. To regenerate ` +
+        `build/icon.icns, run:\n\n  npm install --no-save @fiahfy/icns-convert\n\n` +
+        `Then re-run npm run icons. The committed icon.icns is fine for ` +
+        `CI/distribution; only run this locally when the source PNG changes.`,
+    );
+    process.exit(1);
+  }
+
   const tmpDir = join(BUILD_DIR, '.icns-tmp');
   ensureDir(tmpDir);
   const pngBuffers: Buffer[] = [];
@@ -220,8 +244,7 @@ async function buildIcns(sourcePng: string, outPath: string): Promise<void> {
     run('convert', [sourcePng, '-resize', `${s}x${s}`, out]);
     pngBuffers.push(readFileSync(out));
   }
-  const { convert } = await import('@fiahfy/icns-convert');
-  const icns = await convert(pngBuffers);
+  const icns = await convertFn(pngBuffers);
   writeFileSync(outPath, icns);
 }
 

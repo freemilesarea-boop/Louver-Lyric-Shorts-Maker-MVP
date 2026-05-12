@@ -45,8 +45,10 @@
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0"
   },
+  "optionalDependencies": {
+    "@fiahfy/icns-convert": "^0.0.12"
+  },
   "devDependencies": {
-    "@fiahfy/icns-convert": "^0.0.12",
     "@napi-rs/canvas": "^1.0.0",
     "@types/ffprobe-static": "^2.0.3",
     "@types/node": "^20.11.30",
