@@ -17,6 +17,10 @@ output/
 # ggml model is ~150 MB. CI regenerates them per-platform before
 # electron-builder packages the dist; contributors run the fetch script
 # locally once. The README in resources/whisper/ explains the layout.
+# Phase 5-11: also ignore the Windows companion DLLs (SDL2.dll,
+# whisper.dll, ggml*.dll) that the v1.8.4+ prebuilt zip now ships
+# alongside whisper-cli.exe.
 resources/whisper/bin/*/whisper-cli
 resources/whisper/bin/*/whisper-cli.exe
+resources/whisper/bin/*/*.dll
 resources/whisper/models/ggml-*.bin
