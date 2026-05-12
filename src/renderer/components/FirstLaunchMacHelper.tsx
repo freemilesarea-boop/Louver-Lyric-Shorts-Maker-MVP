@@ -1,40 +1,40 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
 
 /**
- * Phase 5-13.4 — macOS first-launch helper.
+ * Phase 5-13.5 — macOS first-launch helper modal.
  *
- * Shows ONCE on macOS after Gatekeeper was bypassed somehow. The
- * earlier (5-13.3) version put "System Settings → Privacy &
- * Security → 그래도 열기" as the primary path. That turned out to
- * be Sonoma-and-earlier behavior — macOS 15 (Sequoia) tightened
- * Gatekeeper enforcement and now classifies ad-hoc-signed
- * quarantined apps as "damaged" instead of "unidentified
- * developer," which means the "Open Anyway" button never appears
- * in System Settings.
+ * Shown ONCE on macOS after a successful launch. We can't rescue
+ * users from Gatekeeper from inside the app (the app doesn't run
+ * if Gatekeeper blocks it), so the modal is forward-looking — it
+ * tells them what to do NEXT TIME the same warning appears
+ * (e.g. after an update, or when sharing the build with a friend).
  *
- * Revised priority:
+ * Documented install path: `xattr -dr com.apple.quarantine "/Applications/Lyric Shorts Maker.app"`
  *
- *   1. PRIMARY — the `.command` file inside the DMG.
- *      It runs `xattr -dr com.apple.quarantine` + `open`. Works on
- *      every macOS version (Sonoma, Sequoia, future). Terminal-free
- *      for the user (a console window flashes by). This is the only
- *      reliable no-cost path on Sequoia 15.x.
+ * Why not the System Settings → "그래도 열기" path:
  *
- *   2. SECONDARY (Sonoma 14 or earlier) — System Settings.
- *      Still works on Sonoma + earlier. Collapsed by default; users
- *      on those versions can expand it.
+ *   macOS 15 (Sequoia) classifies ad-hoc-signed quarantined apps as
+ *   "damaged" instead of "unidentified developer", and the
+ *   System Settings recovery button never appears. The only no-cost
+ *   path that works on every macOS version is to strip the
+ *   `com.apple.quarantine` xattr — which is what the documented
+ *   xattr command does in one line. We tried (a) ad-hoc signing
+ *   inline via electron-builder (still treated as damaged by
+ *   Sequoia) and (b) a `.command` file in the DMG (Sequoia blocks
+ *   that too). Both paths failed real user testing.
  *
- *   3. TERMINAL (last resort, "even the .command got damaged") —
- *      one-liner xattr command. Inside the secondary collapsible
- *      since it's a power-user fallback.
+ *   Real fix is Apple Developer ID ($99/year) + notarization,
+ *   deferred to V1.0.0 final.
  *
- * The modal acknowledges that the user already got past the OS
- * warning somehow — this is forward-looking guidance for next
- * update / sharing with friends.
+ * UI primary action: a one-click "복사" button that puts the xattr
+ * command on the clipboard. The user opens Terminal, pastes, hits
+ * Enter, types password. Done.
  */
 export default function FirstLaunchMacHelper(): JSX.Element | null {
   const [show, setShow] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const COMMAND = 'xattr -dr com.apple.quarantine "/Applications/Lyric Shorts Maker.app"';
 
   useEffect(() => {
     const isMac =
@@ -60,16 +60,15 @@ export default function FirstLaunchMacHelper(): JSX.Element | null {
     setShow(false);
   };
 
-  // Best-effort macOS version detection from UA. Sequoia is 15.x;
-  // we treat anything we can't parse as "modern + strict" and show
-  // the .command path as primary. Only Sonoma 14.x (and older)
-  // users get the System Settings path called out as a viable
-  // alternative.
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  const m = /Mac OS X (\d+)[._](\d+)/.exec(ua);
-  const macMajor = m ? parseInt(m[1], 10) : null;
-  const isSequoiaOrLater = macMajor !== null && macMajor >= 15;
-  const isSonomaOrEarlier = macMajor !== null && macMajor <= 14;
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(COMMAND);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard API blocked; user can select manually */
+    }
+  };
 
   return (
     <div
@@ -84,38 +83,32 @@ export default function FirstLaunchMacHelper(): JSX.Element | null {
         <div className="mb-4 flex items-start gap-3">
           <span aria-hidden className="text-2xl leading-none">🍎</span>
           <div>
-            <div className="text-[15px] font-semibold">
-              macOS에서 실행해주셔서 감사합니다
-            </div>
+            <div className="text-[15px] font-semibold">macOS 실행 안내</div>
             <div className="mt-0.5 text-[11px] text-white/55">
-              이미 첫 실행은 성공했어요. 다음 업데이트나 친구와 공유하실 때
-              같은 경고가 뜨면 아래대로 하시면 됩니다.
+              이미 실행은 성공했어요. 다음 업데이트 / 다른 Mac에 설치하실 때
+              같은 경고가 뜨면 아래 한 줄을 사용하세요.
             </div>
           </div>
         </div>
 
-        {/* PRIMARY PATH — .command file */}
+        {/* PRIMARY — xattr command */}
         <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
           <div className="mb-3 flex items-center gap-2">
             <span className="rounded bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
-              권장 · 모든 macOS
+              설치 명령
             </span>
             <span className="text-[13px] font-semibold">
-              "손상되었습니다" 경고가 뜨면?
+              터미널 한 번, 그 후로는 더블클릭만
             </span>
           </div>
 
-          <ol className="space-y-3 text-[12.5px] text-white/85">
+          <ol className="mb-3 space-y-2 text-[12.5px] text-white/85">
             <li className="flex gap-3">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15 text-[11px] font-bold">
                 1
               </span>
               <div>
-                다운로드 받으셨던{' '}
-                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px]">
-                  .dmg
-                </span>{' '}
-                파일을 다시 더블클릭해서 여세요
+                Spotlight (⌘+Space) → "터미널" 입력 → Enter
               </div>
             </li>
             <li className="flex gap-3">
@@ -123,116 +116,38 @@ export default function FirstLaunchMacHelper(): JSX.Element | null {
                 2
               </span>
               <div>
-                DMG 창 안에 있는{' '}
-                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-medium">
-                  Unblock Lyric Shorts Maker.command
-                </span>{' '}
-                파일을 더블클릭
-              </div>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15 text-[11px] font-bold">
-                3
-              </span>
-              <div>
-                터미널 창이 잠깐 열리며 "✓ 완료" 표시 → 엔터 → 앱 자동 실행
+                아래 명령을 터미널에 붙여넣고 Enter (사용자 비밀번호 입력 필요)
               </div>
             </li>
           </ol>
 
-          <div className="mt-4 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-[11.5px] text-emerald-100">
-            <div className="mb-0.5 font-semibold">💡 명령어 입력 필요 없음</div>
-            <div className="text-emerald-100/85">
-              터미널이 잠깐 열리긴 하지만 사용자가 직접 무언가 입력할 필요는
-              없습니다. 더블클릭 한 번 + 엔터 한 번이면 끝.
-            </div>
+          {/* Copy box */}
+          <div className="mb-2 flex items-stretch gap-2">
+            <pre className="flex-1 overflow-x-auto rounded-md border border-white/10 bg-black/40 px-3 py-2 text-[10.5px] leading-relaxed text-emerald-200">
+              {COMMAND}
+            </pre>
+            <button
+              onClick={copyCommand}
+              className="shrink-0 rounded-md bg-red-500 px-3 py-2 text-[11.5px] font-semibold text-white hover:bg-red-400"
+            >
+              {copied ? '✓ 복사됨' : '📋 복사'}
+            </button>
+          </div>
+
+          <div className="text-[11px] text-white/50">
+            한 번 실행하면 끝입니다 — 다음부터는 응용 프로그램 폴더에서
+            그냥 더블클릭하면 정상 실행됩니다.
           </div>
         </div>
 
-        {/* SECONDARY — System Settings (Sonoma 14 only) */}
-        <details
-          className="mt-3 rounded-md border border-white/5 bg-white/[0.02] px-3 py-2 text-[11.5px]"
-          open={isSonomaOrEarlier}
-        >
-          <summary className="cursor-pointer select-none text-white/55 hover:text-white/80">
-            macOS 14 (Sonoma) 이전 사용자 — "시스템 설정 → 그래도 열기" 경로
-          </summary>
-          <div className="mt-2 space-y-2 text-white/70">
-            <p>
-              Sonoma 14.x 이전 macOS에서는{' '}
-              <span className="text-white">시스템 설정 → 개인정보 및 보안 →
-              "그래도 열기"</span>{' '}
-              로도 실행할 수 있습니다. Sequoia (15.x) 부터는 Apple이 이 경로를
-              막아서 작동하지 않으므로 위의 .command 방식을 써주세요.
-            </p>
-            <ol className="space-y-1.5 pl-4 text-[11.5px]">
-              <li>1. Applications에서 앱 한 번 더블클릭 → 경고 → "확인"</li>
-              <li>2. 아래 버튼 → 시스템 설정 → 개인정보 및 보안</li>
-              <li>
-                3. "보안" 섹션까지 스크롤 → "Lyric Shorts Maker 차단됨" 옆의{' '}
-                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px]">
-                  그래도 열기
-                </span>{' '}
-                클릭 → 비밀번호/Touch ID
-              </li>
-              <li>4. 한 번 더 뜨는 확인창에서 "열기"</li>
-            </ol>
-            <p className="text-[11px] text-amber-200/80">
-              ⚠️ "그래도 열기" 버튼은 1단계에서 앱을 한 번 실행 시도한 뒤에만
-              시스템 설정에 나타납니다.
-            </p>
-            <button
-              onClick={async () => {
-                const candidates = [
-                  'x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension',
-                  'x-apple.systempreferences:com.apple.preference.security?Privacy',
-                ];
-                for (const url of candidates) {
-                  try {
-                    await api().openExternal(url);
-                    break;
-                  } catch {
-                    /* try next */
-                  }
-                }
-              }}
-              className="mt-1 rounded-md bg-white/10 px-3 py-1.5 text-[11.5px] hover:bg-white/15"
-            >
-              🛡 시스템 설정 → 개인정보 및 보안 열기
-            </button>
-          </div>
-        </details>
-
-        {/* Terminal fallback */}
-        <details className="mt-3 rounded-md border border-white/5 bg-white/[0.02] px-3 py-2 text-[11.5px]">
-          <summary className="cursor-pointer select-none text-white/55 hover:text-white/80">
-            .command 파일조차 안 되면? (마지막 수단)
-          </summary>
-          <div className="mt-2 space-y-2 text-white/70">
-            <p>
-              아주 드물게 .command 파일도 격리되는 경우가 있어요. 그땐 한 번만
-              터미널 명령이 필요합니다:
-            </p>
-            <ol className="space-y-1 pl-4 text-[11.5px]">
-              <li>Spotlight (⌘+Space) → "터미널" → 엔터</li>
-              <li>아래 한 줄을 복사 → 터미널에 붙여넣기 → 엔터</li>
-            </ol>
-            <pre className="overflow-x-auto rounded-md bg-black/40 px-3 py-2 text-[10.5px] text-emerald-200">
-              xattr -dr com.apple.quarantine "/Applications/Lyric Shorts Maker.app"
-            </pre>
-            <p>Mac 사용자 비밀번호 입력 → 그 후 응용 프로그램에서 더블클릭으로 정상 실행.</p>
-          </div>
-        </details>
-
         {/* Why footer */}
         <div className="mt-4 text-[11px] text-white/50">
-          <span className="text-white/70">왜?</span> 아직 Apple Developer ID
-          인증서가 없는 RC 빌드입니다. macOS{' '}
-          {isSequoiaOrLater
-            ? 'Sequoia (15.x)부터 Apple이 미인증 앱 실행을 더 엄격하게 막아서'
-            : '안전 정책상'}{' '}
-          첫 실행 시 사용자 확인이 필요합니다. 정식 V1.0.0에서는 인증서를
-          적용해 경고 없이 바로 실행되도록 할 예정입니다.
+          <span className="text-white/75">왜 터미널 한 줄이 필요한가요?</span>{' '}
+          아직 Apple Developer ID 인증서 ($99/년)가 없는 RC 빌드입니다. macOS
+          Sequoia (15.x)부터 Apple이 미인증 앱 실행을 매우 엄격하게 막아서
+          GUI 경로 (시스템 설정 "그래도 열기")가 작동하지 않습니다. 위 한
+          줄은 macOS의 quarantine 격리 속성을 한 번만 제거합니다. 정식
+          V1.0.0부터는 Developer ID를 적용해 이 단계가 불필요하게 됩니다.
         </div>
 
         <div className="mt-5 flex justify-end">
